@@ -1,0 +1,14 @@
+In bash
+
+  ncdump <input>.nc
+
+In python
+
+  from scipy.io import netcdf
+  f = netcdf.netcdf_file ('<input>.nc', 'r')
+  print (f.history)
+  for v in f.variables:
+      print (v)
+  ele = f.variables ['elevation']
+  lon = f.variables ['lon']
+  at = f.variables ['lat']
