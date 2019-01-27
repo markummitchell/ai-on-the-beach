@@ -1,0 +1,4 @@
+Directories:
+
+.                        Lat/lon plot of shark movement using latlonplot.py
+british_oceanographics   Same as latlonplot.py but with bathysphere (=depth) data added 
