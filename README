@@ -1,4 +1,12 @@
-Directories:
+URLs:
+   http://vterrain.org/Elevation/Bathy/                                Excellent web page listing all the other
+                                                                       bathysphere data web sites. Note that during shutdown
+								       only the GEBCO site was available (among sites that
+								       had easily-parsable data)
+   https://www.gebco.net/data_and_products/gridded_bathymetry_data/    GEBCO (General Bathysphere Chart of the Oceans) data
+                                                                       I used for the british_oceanographic plot of shark
+								       movement + ocean depth
 
-.                        Lat/lon plot of shark movement using latlonplot.py
-british_oceanographics   Same as latlonplot.py but with bathysphere (=depth) data added, using bathysphere.py 
+Directories:
+   .                        Lat/lon plot of shark movement using latlonplot.py
+   british_oceanographics   Same as latlonplot.py but with bathysphere (=depth) data added, using bathysphere.py 
