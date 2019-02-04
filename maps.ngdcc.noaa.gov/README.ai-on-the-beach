@@ -1,0 +1,4 @@
+From http://vterrain.org/Elevation/Bathy/bathy_comp.html. Be sure
+to click on 'XY' icon in legend at top left which replaces graphical
+region selection by manual lat/lon entry. Selecting -70<=lon<=55
+and 35<=lat<=50 gives 901x901 grid in geotiff file

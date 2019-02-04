@@ -8,16 +8,17 @@ from matplotlib.patches import Circle
 import numpy as np
 from scipy.io import netcdf
 
-FILENAME = 'GRIDONE_2D_-70.0_35.0_-55.0_50.0.nc'
+FILENAME = 'etopo1_bedrock.nc'
 LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
 
 # Based on https://matplotlib.org/basemap/users/examples.html. The parameter
 # mmap=False prevents issues related to closing plots/files when arrays are
 # still open
 f = netcdf.netcdf_file (FILENAME, 'r', mmap = False)
-elecdf = f.variables ['elevation']
+elecdf = f.variables ['Band1']
 loncdf = f.variables ['lon']
 latcdf = f.variables ['lat']
+crscdf = f.variables ['crs'] # Do not know what this array contains, other than 1 character strings
 # limits
 elemin = np.min (elecdf.data)
 elemax = np.max (elecdf.data)
@@ -125,7 +126,7 @@ with open ('../Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv',
             lons.append (float (lonStr))
 #map.plot (lons, lats, linewidth = 2.5, color = LINECOLOR, latlon = True)
 
-# show circle at northernmost point in nova scotia which is northwest of meat point, according
+# show circle at northernmost point in nova scotia which is northwest of Meat Point, according
 # to https://stackoverflow.com/questions/49134634/how-to-draw-circle-in-basemap-or-add-artiste
 circle = Circle (xy = map (-60.593352, 47.041354), radius = (map.ymax - map.ymin) / 60, fill = False)
 plt.gca().add_patch (circle)
@@ -139,3 +140,8 @@ plt.show()
 # bathysphere-only contours
 plt.contour (lon, lat, ele, contours)
 plt.show()
+
+# longitude for point northwest of Meat Point
+lonslice = elecdf.data [:, 565]
+plt.plot (lonslice)
+plt.show ()

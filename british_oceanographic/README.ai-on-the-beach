@@ -2,13 +2,8 @@ In bash
 
   ncdump <input>.nc
 
-In python
+The bathysphere.py script reads it
 
-  from scipy.io import netcdf
-  f = netcdf.netcdf_file ('<input>.nc', 'r')
-  print (f.history)
-  for v in f.variables:
-      print (v)
-  ele = f.variables ['elevation']
-  lon = f.variables ['lon']
-  at = f.variables ['lat']
+However, this input was discarded since Basemap's continent boundaries,
+which agree nicely with Google map lat/lon coordinates, do NOT agree
+with the bathysphere data. Errors in latitude up to 0.5 degree were seen
