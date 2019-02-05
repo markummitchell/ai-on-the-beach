@@ -61,7 +61,7 @@ else:
     map = Basemap (projection = 'merc', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
                    llcrnrlat=latmin, urcrnrlat=latmax, \
                    llcrnrlon=lonmin, urcrnrlon=lonmax, \
-                   rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)
+                   rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)    
     
 # The following lines are sometimes skipped because the land coordinates seem to be in  a different
 # reference frame than the bathysphere data, leading to misaligned land-sea boundaries
@@ -124,7 +124,7 @@ with open ('../Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv',
         if latStr != '' and lonStr != '':
             lats.append (float (latStr))
             lons.append (float (lonStr))
-#map.plot (lons, lats, linewidth = 2.5, color = LINECOLOR, latlon = True)
+map.plot (lons, lats, linewidth = 2.5, color = LINECOLOR, latlon = True)
 
 # show circle at northernmost point in nova scotia which is northwest of Meat Point, according
 # to https://stackoverflow.com/questions/49134634/how-to-draw-circle-in-basemap-or-add-artiste
@@ -138,7 +138,12 @@ plt.title (FILENAME)
 plt.show()
 
 # bathysphere-only contours
+plt.close()
 plt.contour (lon, lat, ele, contours)
+for lonx in range (-70, -55 + 1, 1):
+    plt.gca().add_line (plt.Line2D ([lonx, lonx], [35, 50], color='r', linewidth=0.5))
+for laty in range (35, 50 + 1, 1):
+    plt.gca().add_line (plt.Line2D ([-70, -55], [laty, laty], color='r', linewidth=0.5))
 plt.show()
 
 # longitude for point northwest of Meat Point

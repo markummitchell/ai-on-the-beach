@@ -123,7 +123,7 @@ with open ('../Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv',
         if latStr != '' and lonStr != '':
             lats.append (float (latStr))
             lons.append (float (lonStr))
-#map.plot (lons, lats, linewidth = 2.5, color = LINECOLOR, latlon = True)
+map.plot (lons, lats, linewidth = 2.5, color = LINECOLOR, latlon = True)
 
 # show circle at northernmost point in nova scotia which is northwest of meat point, according
 # to https://stackoverflow.com/questions/49134634/how-to-draw-circle-in-basemap-or-add-artiste
