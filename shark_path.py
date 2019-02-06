@@ -11,12 +11,22 @@ import pandas as pd
 from scipy.io import netcdf
 from time import sleep
 
+def loadMapParameters (isBetterMap):
+    if isBetterMap:
+        FILEBATHYSPHERE = 'maps.ngdcc.noaa.gov/etopo1_bedrock.nc'
+        ELEVARIABLE = 'Band1'        
+    else:
+        FILEBATHYSPHERE = 'GRIDONE_2D_-70.0_35.0_-55.0_50.0.nc'
+        ELEVARIABLE = 'elevation'        
+    return FILEBATHYSPHERE, ELEVARIABLE
+
 def main():
     # Some settings
     is3d = False
+    isBetterMap = True
 
-    FILEBATHYSPHERE = 'etopo1_bedrock.nc'
-    FILESHARK = '../Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv'
+    FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)        
+    FILESHARK = 'Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv'
     LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
     PAUSESECONDS = 0.00001 # Nonzero value seems to be required
 
@@ -24,7 +34,7 @@ def main():
     # mmap=False prevents issues related to closing plots/files when arrays are
     # still open
     f = netcdf.netcdf_file (FILEBATHYSPHERE, 'r', mmap = False)
-    elecdf = f.variables ['Band1']
+    elecdf = f.variables [ELEVARIABLE]
     loncdf = f.variables ['lon']
     latcdf = f.variables ['lat']
     crscdf = f.variables ['crs'] # Do not know what this array contains, other than 1 character strings
@@ -51,16 +61,7 @@ def main():
     #plt.ylabel ('latitude')
     #plt.show()
 
-    # 3D -----------------------------------------------------------------------------
-    # Constructor args, like ellipsoid, are at https://media.readthedocs.org/pdf/basemaptutorial/latest/basemaptutorial.pdf.
-    # ellps values are at https://github.com/erdc/pyproj/blob/master/src/pj_ellps.c:
-    #    default (seems to be WGS84)
-    #    GRS67
-    #    WGS84
-    # GEBCO data is based on SRTM30 according to GEBCO_2014.html,
-    # but Basemap seems to be based on WGS84 according to
-    # https://media.readthedocs.org/pdf/basemaptutorial/latest/basemaptutorial.pdf
-
+    # 3D map
     if is3d:
         map = Basemap (projection = 'stere', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
                        llcrnrlat=latmin, urcrnrlat=latmax, \
@@ -71,16 +72,9 @@ def main():
                        llcrnrlat=latmin, urcrnrlat=latmax, \
                        llcrnrlon=lonmin, urcrnrlon=lonmax, \
                        rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)    
-    
-    # The following lines are sometimes skipped because the land coordinates seem to be in  a different
-    # reference frame than the bathysphere data, leading to misaligned land-sea boundaries
-    showLines = True
-    if showLines:
-        map.drawcoastlines (linewidth = 0.25)
-        map.drawcountries (linewidth = 0.25)
-        map.fillcontinents (color = 'coral', lake_color = 'aqua')
-
-    # These are always drawn
+    map.drawcoastlines (linewidth = 0.25)
+    map.drawcountries (linewidth = 0.25)
+    map.fillcontinents (color = 'coral', lake_color = 'aqua')
     map.drawmapboundary (fill_color = 'aqua')
     map.drawmeridians (np.arange (0, 360, 1))
     map.drawparallels (np.arange (-90, 90, 1))
@@ -135,12 +129,14 @@ def main():
                 lat = float (latStr)
                 dat = pd.to_datetime (dateStr, format='%m/%d/%y %H:%M')
                 if lonLast != None:
+                    # Draw a line
                     lons = [lonLast, lon]
                     lats = [latLast, lat]
                     map.plot (lons, lats, linewidth = 1.2, color = LINECOLOR, latlon = True)
                     moves += 1
                     miles += milesMoved (lonLast, latLast, lon, lat)
                 if datLast.dayofyear != dat.dayofyear:
+                    # Move N days forward, where N=1,2,3...
                     for dayofyear in range (datLast.dayofyear, dat.dayofyear):
                         svgFile = ('shark{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
                         datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
@@ -160,9 +156,10 @@ def main():
                 # Besides the delay, this also seems trigger the display, and without it nothing appears
                 plt.pause (PAUSESECONDS)
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300
-    print ("Convert using: ffmpeg -r 1 -i shark%03d.svg -vf scale=1916x1438 -r 10 shark.mp4")
+    print ("Convert using: ffmpeg -r 1 -i shark%03d.svg -vf scale=1916x1438 -r 10 shark_path.mp4")
 
 def milesMoved (lonLast, latLast, lon, lat):
+    # Return the distance between two (lon,lat) points
     RADIUSEARTH = 3959 # miles
     lonLast = lonLast * np.pi / 180.0
     latLast = latLast * np.pi / 180.0
