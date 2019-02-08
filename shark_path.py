@@ -39,6 +39,9 @@ def drawCircle(map):
 
 def drawCurrent (map, lon, lat, u, v):
     map.quiver (lon, lat, u, v)
+
+def drawDeclination (map, lon, lat, dec):
+    map.contour (lon, lat, dec)
     
 def drawMap(is3d, lonmin, lonmax, latmin, latmax):
 
@@ -215,6 +218,24 @@ def loadCurrent(map, lonmin, lonmax, latmin, latmax):
 
     return lonMapped, latMapped, u, v
 
+def loadDeclination (map):
+    FILEDECLINATION = 'ngdc.noaa.gov-geomag/D_Grid_mf_2020.grd'
+    f = netcdf.netcdf_file (FILEDECLINATION, 'r', mmap = False)
+    x = f.variables ['x']
+    y = f.variables ['y']
+    z = f.variables ['z']
+    nx = len (x.data)
+    ny = len (y.data)
+    lon = np.zeros ((nx, ny))
+    lat = np.zeros ((nx, ny))
+    for i in range (nx):
+        for j in range (ny):
+            lon [i] [j] = x.data [i]
+            lat [i] [j] = y.data [j]
+    lonMapped, latMapped = map (lon, lat)
+    # Declination is indexed by (lat,lon) so we tranpose it
+    return lonMapped, latMapped, z.data.transpose()
+
 def loadMapParameters (isBetterMap):
     if isBetterMap:
         FILEBATHYSPHERE = 'maps.ngdcc.noaa.gov/etopo1_bedrock.nc'
@@ -240,8 +261,10 @@ def main():
     map = drawMap (is3d, lonmin, lonmax, latmin, latmax)
     elecdf, loncdf, latcdf = loadBathysphere (isBetterMap)
     lonCurrent, latCurrent, uCurrent, vCurrent = loadCurrent (map, lonmin, lonmax, latmin, latmax)
+    lonDeclination, latDeclination, declination = loadDeclination (map)
     drawBathysphere (map, elecdf, loncdf, latcdf, contours)
     drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent)
+    drawDeclination (map, lonDeclination, latDeclination, declination)
     drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax)
 
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
