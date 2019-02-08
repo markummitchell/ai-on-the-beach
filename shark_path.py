@@ -52,7 +52,7 @@ def drawDeclinationContours (map, lon, lat, dec):
     map.contour (lon, lat, dec)
     
 def drawDeclinationVectors (map, lon, lat, udec, vdec):
-    map.quiver (lon, lat, udec, vdec, scale = 10000, color = 'white', angles = 'xy')
+    map.quiver (lon, lat, udec, vdec, scale = 5, color = 'r') #, scale = 10000, color = 'white', angles = 'xy')
 
 def drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax):
     FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)    
@@ -287,14 +287,14 @@ def main():
     latmax = 50
 
     map = makeMap (is3d, lonmin, lonmax, latmin, latmax)
-    drawContinents (map)
+    drawContinents (map)    
     elecdf, loncdf, latcdf = loadBathysphere (isBetterMap)
     lonCurrent, latCurrent, uCurrent, vCurrent = loadCurrent (map, lonmin, lonmax, latmin, latmax)
     lonDeclination, latDeclination, declination, udec, vdec = loadDeclination (map, lonmin, lonmax, latmin, latmax)
     #drawDeclinationContours (map, lonDeclination, latDeclination, declination)
-    drawDeclinationVectors (map, lonDeclination, latDeclination, udec, vdec)
     drawBathysphere (map, elecdf, loncdf, latcdf, contours)
-    drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent)
+    drawDeclinationVectors (map, lonDeclination, latDeclination, udec, vdec) # Fails if before drawBathysphere
+    drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent) # Fails if before drawBathysphere
     drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax)
 
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
@@ -337,3 +337,4 @@ def milesMoved (lonLast, latLast, lon, lat):
     return distance
 
 main()
+
