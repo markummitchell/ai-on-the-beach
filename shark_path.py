@@ -37,37 +37,22 @@ def drawCircle(map):
     #plt.gca().add_patch (circle)
     pass
 
-def drawCurrent (map, lon, lat, u, v):
-    map.quiver (lon, lat, u, v)
-
-def drawDeclination (map, lon, lat, dec):
-    map.contour (lon, lat, dec)
-    
-def drawMap(is3d, lonmin, lonmax, latmin, latmax):
-
-    # 3D map
-    if is3d:
-        map = Basemap (projection = 'stere', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
-                       llcrnrlat=latmin, urcrnrlat=latmax, \
-                       llcrnrlon=lonmin, urcrnrlon=lonmax, \
-                       rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)
-    else:
-        map = Basemap (projection = 'merc', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
-                       llcrnrlat=latmin, urcrnrlat=latmax, \
-                       llcrnrlon=lonmin, urcrnrlon=lonmax, \
-                       rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)    
+def drawContinents(map):
     map.drawcoastlines (linewidth = 0.25)
     map.drawcountries (linewidth = 0.25)
     map.fillcontinents (color = 'coral', lake_color = 'aqua')
     map.drawmapboundary (fill_color = 'aqua')
     map.drawmeridians (np.arange (0, 360, 1))
     map.drawparallels (np.arange (-90, 90, 1))
+    
+def drawCurrent (map, lon, lat, u, v):
+    map.quiver (lon, lat, u, v)
 
-    # Labels
-    plt.xlabel ('longitude')
-    plt.ylabel ('latitude')
-
-    return map
+def drawDeclinationContours (map, lon, lat, dec):
+    map.contour (lon, lat, dec)
+    
+def drawDeclinationVectors (map, lon, lat, udec, vdec):
+    map.quiver (lon, lat, udec, vdec, scale = 10000, color = 'white', angles = 'xy')
 
 def drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax):
     FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)    
@@ -218,7 +203,7 @@ def loadCurrent(map, lonmin, lonmax, latmin, latmax):
 
     return lonMapped, latMapped, u, v
 
-def loadDeclination (map):
+def loadDeclination (map, lonmin, lonmax, latmin, latmax):
     FILEDECLINATION = 'ngdc.noaa.gov-geomag/D_Grid_mf_2020.grd'
     f = netcdf.netcdf_file (FILEDECLINATION, 'r', mmap = False)
     x = f.variables ['x']
@@ -232,9 +217,52 @@ def loadDeclination (map):
         for j in range (ny):
             lon [i] [j] = x.data [i]
             lat [i] [j] = y.data [j]
-    lonMapped, latMapped = map (lon, lat)
+
     # Declination is indexed by (lat,lon) so we tranpose it
-    return lonMapped, latMapped, z.data.transpose()
+    dec = z.data.transpose ()
+    
+    # We throw away points outside the desired range. This makes no difference with contour
+    # plots but seems to be required for quiver plots to work at all
+    iMap = []
+    jMap = []
+    STEP = 6
+    for i in range (nx):
+        if lonmin <= lon [i][0]:
+            # We found the first so loop through the good ones
+            while i < nx:
+                if lon [i][0] > lonmax:
+                    break;
+                iMap.append (i)
+                i += STEP
+            break
+    for j in range (ny):
+        if latmin <= lat [0][j]:
+            # We found the first so loop through the good ones
+            while j < ny:
+                if lat [0][j] > latmax:
+                    break;
+                jMap.append (j)
+                j += STEP
+            break
+    nxFiltered = len (iMap)
+    nyFiltered = len (jMap)
+    lonFiltered = np.zeros ((nxFiltered, nyFiltered))
+    latFiltered = np.zeros ((nxFiltered, nyFiltered))
+    decFiltered = np.zeros ((nxFiltered, nyFiltered))
+    udecFiltered = np.zeros ((nxFiltered, nyFiltered))
+    vdecFiltered = np.zeros ((nxFiltered, nyFiltered))    
+    for i in range (nxFiltered):
+        for j in range (nyFiltered):
+            lonFiltered [i][j] = lon [iMap [i]] [jMap [j]]
+            latFiltered [i][j] = lat [iMap [i]] [jMap [j]]
+            ang = dec [iMap [i]] [jMap [j]]
+            decFiltered [i][j] = ang
+            udecFiltered [i][j] = math.sin (ang * np.pi / 180)
+            vdecFiltered [i][j] = math.cos (ang * np.pi / 180)
+
+    lonMapped, latMapped = map (lonFiltered, latFiltered)
+
+    return lonMapped, latMapped, decFiltered, udecFiltered, vdecFiltered
 
 def loadMapParameters (isBetterMap):
     if isBetterMap:
@@ -257,18 +285,40 @@ def main():
     lonmax = -55
     latmin = 35
     latmax = 50
-    
-    map = drawMap (is3d, lonmin, lonmax, latmin, latmax)
+
+    map = makeMap (is3d, lonmin, lonmax, latmin, latmax)
+    drawContinents (map)
     elecdf, loncdf, latcdf = loadBathysphere (isBetterMap)
     lonCurrent, latCurrent, uCurrent, vCurrent = loadCurrent (map, lonmin, lonmax, latmin, latmax)
-    lonDeclination, latDeclination, declination = loadDeclination (map)
+    lonDeclination, latDeclination, declination, udec, vdec = loadDeclination (map, lonmin, lonmax, latmin, latmax)
+    #drawDeclinationContours (map, lonDeclination, latDeclination, declination)
+    drawDeclinationVectors (map, lonDeclination, latDeclination, udec, vdec)
     drawBathysphere (map, elecdf, loncdf, latcdf, contours)
     drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent)
-    drawDeclination (map, lonDeclination, latDeclination, declination)
     drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax)
 
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
     print ("Convert using: ffmpeg -r 1 -i outputs/shark_path%03d.svg -vf scale=958x719 -r 10 outputs/shark_path.mp4")
+    
+def makeMap(is3d, lonmin, lonmax, latmin, latmax):
+
+    # 3D map
+    if is3d:
+        map = Basemap (projection = 'stere', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
+                       llcrnrlat=latmin, urcrnrlat=latmax, \
+                       llcrnrlon=lonmin, urcrnrlon=lonmax, \
+                       rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)
+    else:
+        map = Basemap (projection = 'merc', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
+                       llcrnrlat=latmin, urcrnrlat=latmax, \
+                       llcrnrlon=lonmin, urcrnrlon=lonmax, \
+                       rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)    
+
+    # Labels
+    plt.xlabel ('longitude')
+    plt.ylabel ('latitude')
+
+    return map
 
 def milesMoved (lonLast, latLast, lon, lat):
     # Return the distance between two (lon,lat) points
