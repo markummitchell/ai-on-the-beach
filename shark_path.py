@@ -11,55 +11,36 @@ import pandas as pd
 from scipy.io import netcdf
 from time import sleep
 
-def loadMapParameters (isBetterMap):
-    if isBetterMap:
-        FILEBATHYSPHERE = 'maps.ngdcc.noaa.gov/etopo1_bedrock.nc'
-        ELEVARIABLE = 'Band1'        
-    else:
-        FILEBATHYSPHERE = 'GRIDONE_2D_-70.0_35.0_-55.0_50.0.nc'
-        ELEVARIABLE = 'elevation'        
-    return FILEBATHYSPHERE, ELEVARIABLE
+def drawBathysphere (map, elecdf, loncdf, latcdf, contours):
+    # Convert netcdf arrays to regular array. Actually, we will generate
+    # the lon and lat 2d arrays using map.makegrid. Note that there is a subtle
+    # nonlinearity in the latitude versus row number - as seen in lat.csv file below
+    ele = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
+    lon = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
+    lat = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
+    for i in range (ele.shape[0]):
+        for j in range (ele.shape[1]):
+            ele [i] [j] = elecdf [j] [i]
+            lon [i] [j] = loncdf [i]
+            lat [i] [j] = latcdf [j]
+    x, y = map (lon, lat)
+    cs = map.contourf (x, y, ele, contours, cmap = cm.s3pcpn)
 
-def main():
-    # Some settings
-    is3d = False
-    isBetterMap = True
+    # Color scale
+    cbar = map.colorbar (cs, location = 'right', pad = '5%')
+    cbar.set_label ('Elevation (meters)')
 
-    FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)        
-    FILESHARK = 'Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv'
-    LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
-    PAUSESECONDS = 0.00001 # Nonzero value seems to be required
+def drawCircle(map):
+    # Show circle at northernmost point in nova scotia which is northwest of Meat Point, according
+    # to https://stackoverflow.com/questions/49134634/how-to-draw-circle-in-basemap-or-add-artiste
+    #circle = Circle (xy = map (-60.593352, 47.041354), radius = (map.ymax - map.ymin) / 60, fill = False)
+    #plt.gca().add_patch (circle)
+    pass
 
-    # Based on https://matplotlib.org/basemap/users/examples.html. The parameter
-    # mmap=False prevents issues related to closing plots/files when arrays are
-    # still open
-    f = netcdf.netcdf_file (FILEBATHYSPHERE, 'r', mmap = False)
-    elecdf = f.variables [ELEVARIABLE]
-    loncdf = f.variables ['lon']
-    latcdf = f.variables ['lat']
-    crscdf = f.variables ['crs'] # Do not know what this array contains, other than 1 character strings
-    # limits
-    elemin = np.min (elecdf.data)
-    elemax = np.max (elecdf.data)
-    lonmin = np.min (loncdf [:])
-    latmin = np.min (latcdf [:])
-    lonmax = np.max (loncdf [:])
-    latmax = np.max (latcdf [:])
-    print ("input limits: " + \
-           str (lonmin) + "<lon<" + str (lonmax) + " " + \
-           str (latmin) + "<lat<" + str (latmax) + " " + \
-           str (elemin) + "<ele<" + str (elemax))
-
-    # 2D -----------------------------------------------------------------------------
-    lon = loncdf.data
-    #plt.plot (lon)
-    #plt.ylabel ('longitude')
-    #plt.show()
-
-    lat = latcdf.data
-    #plt.plot (lat)
-    #plt.ylabel ('latitude')
-    #plt.show()
+def drawCurrent (map, lon, lat, u, v):
+    map.quiver (lon, lat, u, v)
+    
+def drawMap(is3d, lonmin, lonmax, latmin, latmax):
 
     # 3D map
     if is3d:
@@ -79,36 +60,17 @@ def main():
     map.drawmeridians (np.arange (0, 360, 1))
     map.drawparallels (np.arange (-90, 90, 1))
 
-    # limits are -5443 to 1298 (elemin to elemax)
-    contours = np.array([-5500., -5000., -4500., -4000., -3500., -3000., -2500., -2000., \
-                         -1500., -1000., -500., 0., 500., 1000., 1500.])
-
-    # Convert netcdf arrays to regular array. Actually, we will generate
-    # the lon and lat 2d arrays using map.makegrid. Note that there is a subtle
-    # nonlinearity in the latitude versus row number - as seen in lat.csv file below
-    ele = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
-    lon = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
-    lat = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
-    for i in range (ele.shape[0]):
-        for j in range (ele.shape[1]):
-            ele [i] [j] = elecdf [j] [i]
-            lon [i] [j] = loncdf [i]
-            lat [i] [j] = latcdf [j]
-    x, y = map (lon, lat)
-    cs = map.contourf (x, y, ele, contours, cmap = cm.s3pcpn)
-
-    # Color scale
-    cbar = map.colorbar (cs,location = 'right', pad = '5%')
-    cbar.set_label ('Elevation (meters)')
-
-    # Show circle at northernmost point in nova scotia which is northwest of Meat Point, according
-    # to https://stackoverflow.com/questions/49134634/how-to-draw-circle-in-basemap-or-add-artiste
-    #circle = Circle (xy = map (-60.593352, 47.041354), radius = (map.ymax - map.ymin) / 60, fill = False)
-    #plt.gca().add_patch (circle)
-
     # Labels
     plt.xlabel ('longitude')
     plt.ylabel ('latitude')
+
+    return map
+
+def drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax):
+    FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)    
+    FILESHARK = 'Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv'
+    PAUSESECONDS = 0.00001 # Nonzero value seems to be required
+    LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
 
     # Shark waypoints
     lonLast = None
@@ -138,7 +100,7 @@ def main():
                 if datLast.dayofyear != dat.dayofyear:
                     # Move N days forward, where N=1,2,3...
                     for dayofyear in range (datLast.dayofyear, dat.dayofyear):
-                        svgFile = ('shark{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
+                        svgFile = ('outputs/shark_path{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
                         datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
                         movesAndMiles = '{} moves, {} miles' . format (moves, int (miles + 0.5))
                         print (str (datFile) + ": " + svgFile + " (" + movesAndMiles + ")")
@@ -155,8 +117,135 @@ def main():
                 datLast = dat
                 # Besides the delay, this also seems trigger the display, and without it nothing appears
                 plt.pause (PAUSESECONDS)
-    # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300
-    print ("Convert using: ffmpeg -r 1 -i shark%03d.svg -vf scale=1916x1438 -r 10 shark_path.mp4")
+                
+def loadBathysphere (isBetterMap):
+    FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)
+
+    # Based on https://matplotlib.org/basemap/users/examples.html. The parameter
+    # mmap=False prevents issues related to closing plots/files when arrays are
+    # still open
+    f = netcdf.netcdf_file (FILEBATHYSPHERE, 'r', mmap = False)
+    elecdf = f.variables [ELEVARIABLE]
+    loncdf = f.variables ['lon']
+    latcdf = f.variables ['lat']
+    crscdf = f.variables ['crs'] # Do not know what this array contains, other than 1 character strings
+    # limits
+    elemin = np.min (elecdf.data)
+    elemax = np.max (elecdf.data)
+    lonmin = np.min (loncdf [:])
+    latmin = np.min (latcdf [:])
+    lonmax = np.max (loncdf [:])
+    latmax = np.max (latcdf [:])
+
+    # 2D -----------------------------------------------------------------------------
+    lon = loncdf.data
+    #plt.plot (lon)
+    #plt.ylabel ('longitude')
+    #plt.show()
+
+    lat = latcdf.data
+    #plt.plot (lat)
+    #plt.ylabel ('latitude')
+    #plt.show()
+
+    return elecdf, loncdf, latcdf
+
+def loadCurrent(map, lonmin, lonmax, latmin, latmax):
+    FILENAMECURRENT = 'data.nodc.noaa.gov/ofs_atl.t00z.n000.20170321.grb.grib2.nc'
+    f = netcdf.netcdf_file (FILENAMECURRENT, 'r', mmap = False)
+
+    # We have available way too many points - 55,000 just in our desired lon/lat range alone. So
+    # we filter out just what we want here so later processing is not unacceptably slow
+    ucdf = f.variables ['u-component_of_current_hybrid_layer']
+    vcdf = f.variables ['v-component_of_current_hybrid_layer']    
+    loncdf = f.variables ['Longitude_of_U_Wind_Component_of_Velocity_surface']
+    latcdf = f.variables ['Latitude_of_U_Wind_Component_of_Velocity_surface']    
+    nxTooMany = ucdf[0][0].shape[0]
+    nyTooMany = ucdf[0][0].shape[1]
+    lonTooMany=[]
+    latTooMany=[]
+    uTooMany=[]
+    vTooMany=[]
+    for xTooMany in range (nxTooMany):
+        for yTooMany in range (nyTooMany):
+            if not math.isnan(ucdf[0][0][xTooMany][yTooMany]) and not math.isnan(vcdf[0][0][xTooMany][yTooMany]):
+                if lonmin<=loncdf[xTooMany][yTooMany] and loncdf[xTooMany][yTooMany]<=lonmax and \
+                   latmin<=latcdf[xTooMany][yTooMany] and latcdf[xTooMany][yTooMany]<=latmax:
+                    lonTooMany.append(loncdf[xTooMany][yTooMany])
+                    latTooMany.append(latcdf[xTooMany][yTooMany])
+                    uTooMany.append(ucdf[0][0][xTooMany][yTooMany])
+                    vTooMany.append(vcdf[0][0][xTooMany][yTooMany])
+                    
+    # Still too many, so lets make an nx x ny grid
+    nx = 20
+    ny = 20
+    lon = np.zeros((nx, ny))
+    lat = np.zeros((nx, ny))
+    u = np.zeros((nx, ny))
+    v = np.zeros((nx, ny))
+    for x in range (nx):
+        for y in range (ny):
+            lon [x][y] = lonmin + (lonmax - lonmin) * float (x) / float (nx - 1)            
+            lat [x][y] = latmin + (latmax - latmin) * float (y) / float (ny - 1)
+            # Find closest lon/lat point
+            isFirst = True
+            closestDistanceSquared = 0
+            for iTooMany in range (len (lonTooMany)):
+                lonT = lonTooMany[iTooMany]
+                latT = latTooMany[iTooMany]
+                # Preliminary filtering for efficiency
+                if lon [x][y] - 0.1 < lonT and lonT < lon [x][y] + 0.1 and lat [x][y] - 0.1 < latT and latT  < lat [x][y] + 0.1:
+                    # Slower processing of close points
+                    distanceSquared = (lon [x][y] - lonT) * (lon [x][y] - lonT) + (lat [x][y] - latT) * (lat [x][y] - latT)
+                    if isFirst or distanceSquared < closestDistanceSquared:
+                        # Save this as the best so far
+                        isFirst = False
+                        closestDistanceSquared = distanceSquared
+                        uClosest = uTooMany[iTooMany]
+                        vClosest = vTooMany[iTooMany]
+            if isFirst:
+                # All nearby original u and v values must have been NaN
+                u [x][y] = 0
+                v [x][y] = 0
+            else:
+                # Save the closest
+                u [x][y] = uClosest
+                v [x][y] = vClosest
+    lonMapped, latMapped = map (lon, lat)
+
+    return lonMapped, latMapped, u, v
+
+def loadMapParameters (isBetterMap):
+    if isBetterMap:
+        FILEBATHYSPHERE = 'maps.ngdcc.noaa.gov/etopo1_bedrock.nc'
+        ELEVARIABLE = 'Band1'        
+    else:
+        FILEBATHYSPHERE = 'GRIDONE_2D_-70.0_35.0_-55.0_50.0.nc'
+        ELEVARIABLE = 'elevation'        
+    return FILEBATHYSPHERE, ELEVARIABLE
+
+def main():
+    # Some settings
+    is3d = False
+    isBetterMap = True
+    contours = np.array([-5500., -5000., -4500., -4000., -3500., -3000., -2500., -2000., \
+                         -1500., -1000., -500., 0., 500., 1000., 1500.]) # limits are -5443 to 1298 (elemin to elemax)
+
+    # Grids should be preprocessed to have these bounds
+    lonmin = -70
+    lonmax = -55
+    latmin = 35
+    latmax = 50
+    
+    map = drawMap (is3d, lonmin, lonmax, latmin, latmax)
+    elecdf, loncdf, latcdf = loadBathysphere (isBetterMap)
+    lonCurrent, latCurrent, uCurrent, vCurrent = loadCurrent (map, lonmin, lonmax, latmin, latmax)
+    drawBathysphere (map, elecdf, loncdf, latcdf, contours)
+    drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent)
+    drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax)
+
+    # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
+    print ("Convert using: ffmpeg -r 1 -i outputs/shark_path%03d.svg -vf scale=958x719 -r 10 outputs/shark_path.mp4")
 
 def milesMoved (lonLast, latLast, lon, lat):
     # Return the distance between two (lon,lat) points
