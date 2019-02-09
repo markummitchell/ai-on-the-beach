@@ -7,6 +7,7 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle
 import numpy as np
+import operator
 import pandas as pd
 from scipy.io import netcdf
 from time import sleep
@@ -52,58 +53,50 @@ def drawDeclinationContours (map, lon, lat, dec):
 def drawDeclinationVectors (map, lon, lat, udec, vdec):
     map.quiver (lon, lat, udec, vdec, scale = 12, color = 'r') # Larger scale for smaller vectors
 
-def drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax):
+def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax):
     FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)    
-    FILESHARK = 'gallagher_4feb19/Gallagher_BTW_Tracks_4Feb19 - Gallagher_BTW_Tracks_4Feb19.tsv'
     PAUSESECONDS = 0.00001 # Nonzero value seems to be required
     LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
-
+    
     # Shark waypoints
     lonLast = None
     latLast = None
-    datLast = pd.to_datetime ('8/1/18 12:00')
+    datLast = waypoints [0][0]
     imgLast = 0
     moves = 0
     miles = 0
-    with open (FILESHARK, 'r') as f:
-        reader = csv.DictReader (f, delimiter = '\t') # Read tab separated values
-        headers = reader.fieldnames
-        for line in reader:
-            dateStr = line ['dt']
-            latStr = line ['lat']
-            lonStr = line ['lon']
-            classStr = line ['class']
-            if classStr == '0' or classStr == '1' or classStr == '2':
-                lon = float (lonStr)
-                lat = float (latStr)
-                dat = pd.to_datetime (dateStr, format='%m/%d/%y %H:%M')
-                if lonLast != None:
-                    # Draw a line
-                    lons = [lonLast, lon]
-                    lats = [latLast, lat]
-                    map.plot (lons, lats, linewidth = 1.2, color = LINECOLOR, latlon = True)
-                    moves += 1
-                    miles += milesMoved (lonLast, latLast, lon, lat)
-                if datLast.dayofyear != dat.dayofyear:
-                    # Move N days forward, where N=1,2,3...
-                    for dayofyear in range (datLast.dayofyear, dat.dayofyear):
-                        svgFile = ('outputs/gallagher{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
-                        datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
-                        movesAndMiles = '{} moves, {} miles' . format (moves, int (miles + 0.5))
-                        print (str (datFile) + ": " + svgFile + " (" + movesAndMiles + ")")
-                        plt.title (FILEBATHYSPHERE + '\n' + FILESHARK + '\n' + datFile.strftime ('%Y/%m/%d') + \
-                                   ' [' + movesAndMiles + '] ' + \
-                                   str (int (lonmin - 0.1)) + '<lon<' + str (int (lonmax - 0.1)) + ' ' + \
-                                   str (int (latmin + 0.1)) + '<lat<' + str (int (latmax + 0.1)))
-                        plt.savefig (svgFile)
-                        imgLast += 1
-                        moves = 0
-                        miles = 0
-                lonLast = lon
-                latLast = lat
-                datLast = dat
-                # Besides the delay, this also seems trigger the display, and without it nothing appears
-                plt.pause (PAUSESECONDS)
+    for row in waypoints:
+        dat = row [0]        
+        lon = row [1]
+        lat = row [2]
+        print ('lonLast={} dat={} lon={} lat={}' . format (lonLast, dat, lon, lat))
+        if lonLast != None:
+            # Draw a line
+            lons = [lonLast, lon]
+            lats = [latLast, lat]
+            map.plot (lons, lats, linewidth = 1.2, color = LINECOLOR, latlon = True)
+            moves += 1
+            miles += milesMoved (lonLast, latLast, lon, lat)
+        if datLast.dayofyear != dat.dayofyear:
+            # Move N days forward, where N=1,2,3...
+            for dayofyear in range (datLast.dayofyear, dat.dayofyear):
+                svgFile = ('outputs/gallagher{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
+                datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
+                movesAndMiles = '{} moves, {} miles' . format (moves, int (miles + 0.5))
+                print (str (datFile) + ": " + svgFile + " (" + movesAndMiles + ")")
+                plt.title (FILEBATHYSPHERE + '\n' + FILESHARK + '\n' + datFile.strftime ('%Y/%m/%d') + \
+                           ' [' + movesAndMiles + '] ' + \
+                           str (int (lonmin - 0.1)) + '<lon<' + str (int (lonmax - 0.1)) + ' ' + \
+                           str (int (latmin + 0.1)) + '<lat<' + str (int (latmax + 0.1)))
+                plt.savefig (svgFile)
+                imgLast += 1
+                moves = 0
+                miles = 0
+        lonLast = lon
+        latLast = lat
+        datLast = dat
+        # Besides the delay, this also seems trigger the display, and without it nothing appears
+        plt.pause (PAUSESECONDS)
                 
 def loadBathysphere (isBetterMap):
     FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)
@@ -280,6 +273,27 @@ def loadMapParameters (isBetterMap):
         ELEVARIABLE = 'elevation'        
     return FILEBATHYSPHERE, ELEVARIABLE
 
+def loadSharkPath (FILESHARK):
+    waypoints = []
+    with open (FILESHARK, 'r') as f:
+        reader = csv.DictReader (f, delimiter = '\t') # Read tab separated values
+        headers = reader.fieldnames
+        for line in reader:
+            dateStr = line ['dt']
+            latStr = line ['lat']
+            lonStr = line ['lon']
+            classStr = line ['class']
+
+            # Only keep the good data
+            if classStr == '0' or classStr == '1' or classStr == '2':
+                lon = float (lonStr)
+                lat = float (latStr)
+                dat = pd.to_datetime (dateStr, format='%m/%d/%y %H:%M')
+                waypoints.append ([dat, lon, lat])
+    # For some reason the data is not in chronological order so sort it
+    waypoints = sorted (waypoints, key = lambda row:row[0])
+    return waypoints
+
 def main():
     # Some settings
     is3d = False
@@ -292,17 +306,19 @@ def main():
     lonmax = -35
     latmin = 10
     latmax = 45
-
+    FILESHARK = 'gallagher_4feb19/Gallagher_BTW_Tracks_4Feb19.tsv'
+    
     map = makeMap (is3d, lonmin, lonmax, latmin, latmax)
     drawContinents (map)        
     elecdf, loncdf, latcdf = loadBathysphere (isBetterMap)
     lonCurrent, latCurrent, uCurrent, vCurrent = loadCurrent (map, lonmin, lonmax, latmin, latmax)
     lonDeclination, latDeclination, declination, udec, vdec = loadDeclination (map, lonmin, lonmax, latmin, latmax)
+    waypoints = loadSharkPath (FILESHARK)
     #drawDeclinationContours (map, lonDeclination, latDeclination, declination)
     drawBathysphere (map, elecdf, loncdf, latcdf, contours)
     drawDeclinationVectors (map, lonDeclination, latDeclination, udec, vdec) # Fails if before drawBathysphere
     drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent) # Fails if before drawBathysphere
-    drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax) # Main plotting loop
+    drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax) # Main plotting loop
     
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
     print ("Convert using: ffmpeg -r 1 -i outputs/gallagher%03d.svg -vf scale=958x719 -r 10 outputs/gallagher.mp4")
