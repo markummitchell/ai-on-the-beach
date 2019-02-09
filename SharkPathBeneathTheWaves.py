@@ -12,14 +12,12 @@ from scipy.io import netcdf
 from time import sleep
 
 def drawBathysphere (map, elecdf, loncdf, latcdf, contours):
-    # Convert netcdf arrays to regular array. Actually, we will generate
-    # the lon and lat 2d arrays using map.makegrid. Note that there is a subtle
-    # nonlinearity in the latitude versus row number - as seen in lat.csv file below
-    ele = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
-    lon = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
-    lat = np.zeros ((elecdf.shape[0], elecdf.shape[1]))
-    for i in range (ele.shape[0]):
-        for j in range (ele.shape[1]):
+    # Convert netcdf arrays to regular array, with components transposed
+    ele = np.zeros ((elecdf.shape[1], elecdf.shape[0]))
+    lon = np.zeros ((elecdf.shape[1], elecdf.shape[0]))
+    lat = np.zeros ((elecdf.shape[1], elecdf.shape[0]))
+    for i in range (elecdf.shape[1]):
+        for j in range (elecdf.shape[0]):
             ele [i] [j] = elecdf [j] [i]
             lon [i] [j] = loncdf [i]
             lat [i] [j] = latcdf [j]
@@ -274,7 +272,7 @@ def loadDeclination (map, lonmin, lonmax, latmin, latmax):
 
 def loadMapParameters (isBetterMap):
     if isBetterMap:
-        FILEBATHYSPHERE = 'maps.ngdcc.noaa.gov/etopo1_bedrock.nc'
+        FILEBATHYSPHERE = 'maps.ngdcc.noaa.gov/etopo1_bedrock_-70_-55+35+50.nc'
         ELEVARIABLE = 'Band1'        
     else:
         FILEBATHYSPHERE = 'GRIDONE_2D_-70.0_35.0_-55.0_50.0.nc'
