@@ -40,7 +40,7 @@ def drawCircle(map):
 def drawContinents(map):
     map.drawcoastlines (linewidth = 0.25)
     map.drawcountries (linewidth = 0.25)
-    map.fillcontinents (color = 'coral', lake_color = 'aqua')
+    #map.fillcontinents (color = 'coral', lake_color = 'aqua') # Overwrites land portions of quivers drawn later
     map.drawmapboundary (fill_color = 'aqua')
     map.drawmeridians (np.arange (0, 360, 1))
     map.drawparallels (np.arange (-90, 90, 1))
@@ -52,11 +52,11 @@ def drawDeclinationContours (map, lon, lat, dec):
     map.contour (lon, lat, dec)
     
 def drawDeclinationVectors (map, lon, lat, udec, vdec):
-    map.quiver (lon, lat, udec, vdec, scale = 5, color = 'r') #, scale = 10000, color = 'white', angles = 'xy')
+    map.quiver (lon, lat, udec, vdec, scale = 12, color = 'r') # Larger scale for smaller vectors
 
 def drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax):
     FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)    
-    FILESHARK = 'Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv'
+    FILESHARK = 'BeneathTheWaves/Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv'
     PAUSESECONDS = 0.00001 # Nonzero value seems to be required
     LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
 
@@ -88,7 +88,7 @@ def drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax):
                 if datLast.dayofyear != dat.dayofyear:
                     # Move N days forward, where N=1,2,3...
                     for dayofyear in range (datLast.dayofyear, dat.dayofyear):
-                        svgFile = ('outputs/shark_path{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
+                        svgFile = ('outputs/BeneathTheWaves{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
                         datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
                         movesAndMiles = '{} moves, {} miles' . format (moves, int (miles + 0.5))
                         print (str (datFile) + ": " + svgFile + " (" + movesAndMiles + ")")
@@ -225,24 +225,32 @@ def loadDeclination (map, lonmin, lonmax, latmin, latmax):
     # plots but seems to be required for quiver plots to work at all
     iMap = []
     jMap = []
-    STEP = 6
+    COUNT = 8
+    lonMargin = (lonmax - lonmin) / (2 * COUNT)
+    latMargin = (latmax - latmin) / (2 * COUNT)
+    lonDelta = lon [1][0] - lon [0][0]
+    latDelta = lat [0][1] - lat [0][0]
+    lonCount = 1 + int ((lonmax - lonmin) / lonDelta)
+    latCount = 1 + int ((latmax - latmin) / latDelta)
+    lonStep = int (lonCount / (COUNT - 1))
+    latStep = int (latCount / (COUNT - 1))
     for i in range (nx):
-        if lonmin <= lon [i][0]:
+        if lonmin + lonMargin < lon [i][0]:
             # We found the first so loop through the good ones
             while i < nx:
-                if lon [i][0] > lonmax:
+                if lon [i][0] > lonmax - lonMargin:
                     break;
                 iMap.append (i)
-                i += STEP
+                i += lonStep
             break
     for j in range (ny):
-        if latmin <= lat [0][j]:
+        if latmin + latMargin < lat [0][j]:
             # We found the first so loop through the good ones
             while j < ny:
-                if lat [0][j] > latmax:
+                if lat [0][j] > latmax - latMargin:
                     break;
                 jMap.append (j)
-                j += STEP
+                j += latStep
             break
     nxFiltered = len (iMap)
     nyFiltered = len (jMap)
@@ -287,7 +295,7 @@ def main():
     latmax = 50
 
     map = makeMap (is3d, lonmin, lonmax, latmin, latmax)
-    drawContinents (map)    
+    drawContinents (map)        
     elecdf, loncdf, latcdf = loadBathysphere (isBetterMap)
     lonCurrent, latCurrent, uCurrent, vCurrent = loadCurrent (map, lonmin, lonmax, latmin, latmax)
     lonDeclination, latDeclination, declination, udec, vdec = loadDeclination (map, lonmin, lonmax, latmin, latmax)
@@ -295,10 +303,10 @@ def main():
     drawBathysphere (map, elecdf, loncdf, latcdf, contours)
     drawDeclinationVectors (map, lonDeclination, latDeclination, udec, vdec) # Fails if before drawBathysphere
     drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent) # Fails if before drawBathysphere
-    drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax)
-
+    drawSharkPath (map, isBetterMap, lonmin, lonmax, latmin, latmax) # Main plotting loop
+    
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
-    print ("Convert using: ffmpeg -r 1 -i outputs/shark_path%03d.svg -vf scale=958x719 -r 10 outputs/shark_path.mp4")
+    print ("Convert using: ffmpeg -r 1 -i outputs/BeneathTheWaves%03d.svg -vf scale=958x719 -r 10 outputs/BeneathTheWaves.mp4")
     
 def makeMap(is3d, lonmin, lonmax, latmin, latmax):
 
