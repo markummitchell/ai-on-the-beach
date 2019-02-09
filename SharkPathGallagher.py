@@ -12,6 +12,8 @@ import pandas as pd
 from scipy.io import netcdf
 from time import sleep
 
+COL_DATE = 1
+
 def drawBathysphere (map, elecdf, loncdf, latcdf, contours):
     # Convert netcdf arrays to regular array, with components transposed
     ele = np.zeros ((elecdf.shape[1], elecdf.shape[0]))
@@ -58,25 +60,25 @@ def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmi
     PAUSESECONDS = 0.00001 # Nonzero value seems to be required
     LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
     
-    # Shark waypoints
-    lonLast = None
-    latLast = None
-    datLast = waypoints [0][0]
+    # Shark waypoints. There can be multiple ids so lonLast and latLast are vectors indexed by id
+    lonLast = {}
+    latLast = {}
+    datLast = waypoints [0][COL_DATE]
     imgLast = 0
     moves = 0
     miles = 0
     for row in waypoints:
-        dat = row [0]        
-        lon = row [1]
-        lat = row [2]
-        print ('lonLast={} dat={} lon={} lat={}' . format (lonLast, dat, lon, lat))
-        if lonLast != None:
+        id  = row [0]
+        dat = row [1]        
+        lon = row [2]
+        lat = row [3]
+        if id in lonLast:
             # Draw a line
-            lons = [lonLast, lon]
-            lats = [latLast, lat]
+            lons = [lonLast [id], lon]
+            lats = [latLast [id], lat]
             map.plot (lons, lats, linewidth = 1.2, color = LINECOLOR, latlon = True)
             moves += 1
-            miles += milesMoved (lonLast, latLast, lon, lat)
+            miles += milesMoved (lonLast [id], latLast [id], lon, lat)
         if datLast.dayofyear != dat.dayofyear:
             # Move N days forward, where N=1,2,3...
             for dayofyear in range (datLast.dayofyear, dat.dayofyear):
@@ -92,8 +94,8 @@ def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmi
                 imgLast += 1
                 moves = 0
                 miles = 0
-        lonLast = lon
-        latLast = lat
+        lonLast [id] = lon
+        latLast [id] = lat
         datLast = dat
         # Besides the delay, this also seems trigger the display, and without it nothing appears
         plt.pause (PAUSESECONDS)
@@ -279,6 +281,7 @@ def loadSharkPath (FILESHARK):
         reader = csv.DictReader (f, delimiter = '\t') # Read tab separated values
         headers = reader.fieldnames
         for line in reader:
+            idStr = line ['ptt']
             dateStr = line ['dt']
             latStr = line ['lat']
             lonStr = line ['lon']
@@ -286,12 +289,13 @@ def loadSharkPath (FILESHARK):
 
             # Only keep the good data
             if classStr == '0' or classStr == '1' or classStr == '2':
+                id = int (idStr)
                 lon = float (lonStr)
                 lat = float (latStr)
                 dat = pd.to_datetime (dateStr, format='%m/%d/%y %H:%M')
-                waypoints.append ([dat, lon, lat])
+                waypoints.append ([id, dat, lon, lat]) # COL_DATE must match position here!
     # For some reason the data is not in chronological order so sort it
-    waypoints = sorted (waypoints, key = lambda row:row[0])
+    waypoints = sorted (waypoints, key = lambda row:row[1])
     return waypoints
 
 def main():
