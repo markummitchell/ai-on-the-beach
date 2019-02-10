@@ -13,6 +13,8 @@ from scipy.io import netcdf
 from time import sleep
 
 COL_DATE = 1
+# svg format gives lossless quality but huge 33MB files for gallagher
+IMGEXTENSION = 'png'
 
 def drawBathysphere (map, elecdf, loncdf, latcdf, contours):
     # Convert netcdf arrays to regular array, with components transposed
@@ -43,8 +45,8 @@ def drawContinents(map):
     map.drawcountries (linewidth = 0.25)
     #map.fillcontinents (color = 'coral', lake_color = 'aqua') # Overwrites land portions of quivers drawn later
     map.drawmapboundary (fill_color = 'aqua')
-    map.drawmeridians (np.arange (0, 360, 1))
-    map.drawparallels (np.arange (-90, 90, 1))
+    map.drawmeridians (np.arange (0, 360, 10))
+    map.drawparallels (np.arange (-90, 90, 10))
     
 def drawCurrent (map, lon, lat, u, v):
     map.quiver (lon, lat, u, v)
@@ -69,7 +71,7 @@ def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmi
     miles = 0
     for row in waypoints:
         id  = row [0]
-        dat = row [1]        
+        dat = row [COL_DATE]        
         lon = row [2]
         lat = row [3]
         if id in lonLast:
@@ -82,15 +84,15 @@ def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmi
         if datLast.dayofyear != dat.dayofyear:
             # Move N days forward, where N=1,2,3...
             for dayofyear in range (datLast.dayofyear, dat.dayofyear):
-                svgFile = ('outputs/gallagher{:03d}.svg' . format (imgLast)) # svg format gives lossless quality
+                imgFile = ('outputs/gallagher{:03d}.{}' . format (imgLast, IMGEXTENSION)) 
                 datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
                 movesAndMiles = '{} moves, {} miles' . format (moves, int (miles + 0.5))
-                print (str (datFile) + ": " + svgFile + " (" + movesAndMiles + ")")
+                print (str (datFile) + ": " + imgFile + " (" + movesAndMiles + ")")
                 plt.title (FILEBATHYSPHERE + '\n' + FILESHARK + '\n' + datFile.strftime ('%Y/%m/%d') + \
                            ' [' + movesAndMiles + '] ' + \
                            str (int (lonmin - 0.1)) + '<lon<' + str (int (lonmax - 0.1)) + ' ' + \
                            str (int (latmin + 0.1)) + '<lat<' + str (int (latmax + 0.1)))
-                plt.savefig (svgFile)
+                plt.savefig (imgFile)
                 imgLast += 1
                 moves = 0
                 miles = 0
@@ -219,7 +221,7 @@ def loadDeclination (map, lonmin, lonmax, latmin, latmax):
     # plots but seems to be required for quiver plots to work at all
     iMap = []
     jMap = []
-    COUNT = 8
+    COUNT = 4
     lonMargin = (lonmax - lonmin) / (2 * COUNT)
     latMargin = (latmax - latmin) / (2 * COUNT)
     lonDelta = lon [1][0] - lon [0][0]
@@ -295,7 +297,7 @@ def loadSharkPath (FILESHARK):
                 dat = pd.to_datetime (dateStr, format='%m/%d/%y %H:%M')
                 waypoints.append ([id, dat, lon, lat]) # COL_DATE must match position here!
     # For some reason the data is not in chronological order so sort it
-    waypoints = sorted (waypoints, key = lambda row:row[1])
+    waypoints = sorted (waypoints, key = lambda row:row[COL_DATE])
     return waypoints
 
 def main():
@@ -303,7 +305,7 @@ def main():
     is3d = False
     isBetterMap = True
     contours = np.array([-5500., -5000., -4500., -4000., -3500., -3000., -2500., -2000., \
-                         -1500., -1000., -500., 0., 500., 1000., 1500.]) # limits are -5443 to 1298 (elemin to elemax)
+                         -1500., -1000., -500., 0., 500., 1000., 1500.]) # limits are -5443 to 12898 (elemin to elemax)
 
     # Grids should be preprocessed to have these bounds
     lonmin = -80
@@ -325,7 +327,8 @@ def main():
     drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax) # Main plotting loop
     
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
-    print ("Convert using: ffmpeg -r 1 -i outputs/gallagher%03d.svg -vf scale=958x719 -r 10 outputs/gallagher.mp4")
+    print ("Convert using: ffmpeg -r 1 -i outputs/gallagher%03d.{} -vf scale=958x719 -r 10 outputs/gallagher.mp4" . \
+           format (IMGEXTENSION))
     
 def makeMap(is3d, lonmin, lonmax, latmin, latmax):
 
