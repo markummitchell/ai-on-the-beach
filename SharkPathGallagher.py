@@ -326,8 +326,9 @@ def main():
     drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent) # Fails if before drawBathysphere
     drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax) # Main plotting loop
     
-    # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord)
-    print ("Convert using: ffmpeg -r 1 -i outputs/gallagher%03d.{} -vf scale=958x719 -r 10 outputs/gallagher.mp4" . \
+    # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord).
+    # setpts value is smaller for faster movement and smaller file
+    print ('Convert using: ffmpeg -i outputs/gallagher%03d.{} -vf scale=958x719 -filter:v "setpts=0.4*PTS" outputs/gallagher.mp4' . \
            format (IMGEXTENSION))
     
 def makeMap(is3d, lonmin, lonmax, latmin, latmax):
