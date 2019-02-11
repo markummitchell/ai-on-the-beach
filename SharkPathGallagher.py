@@ -9,6 +9,7 @@ from matplotlib.patches import Circle, Rectangle
 import numpy as np
 import operator
 import pandas as pd
+from scipy.interpolate import griddata
 from scipy.io import netcdf
 from time import sleep
 
@@ -27,7 +28,12 @@ def drawBathysphere (map, elecdf, loncdf, latcdf, contours):
             lon [i] [j] = loncdf [i]
             lat [i] [j] = latcdf [j]
     x, y = map (lon, lat)
-    cs = map.contourf (x, y, ele, contours, cmap = cm.s3pcpn)
+    # cmap = cm.s3pcpn = blue, black, white brown
+    # cmap = cm.Blues_r
+    # cmap = plt.cm.get_cmap('Blues'))
+    # cmap = plt.cm.get_cmap('RdBu'))
+    # cmap = plt.cm.get_cmap('Dark2'))        
+    cs = map.contourf (x, y, ele, contours, cmap = plt.cm.get_cmap('Blues'))
 
     # Color scale
     cbar = map.colorbar (cs, location = 'right', pad = '5%')
@@ -36,9 +42,8 @@ def drawBathysphere (map, elecdf, loncdf, latcdf, contours):
 def drawCircle(map):
     # Show circle at northernmost point in nova scotia which is northwest of Meat Point, according
     # to https://stackoverflow.com/questions/49134634/how-to-draw-circle-in-basemap-or-add-artiste
-    #circle = Circle (xy = map (-60.593352, 47.041354), radius = (map.ymax - map.ymin) / 60, fill = False)
-    #plt.gca().add_patch (circle)
-    pass
+    circle = Circle (xy = map (-60.593352, 47.041354), radius = (map.ymax - map.ymin) / 60, fill = False)
+    plt.gca().add_patch (circle)
 
 def drawContinents(map):
     map.drawcoastlines (linewidth = 0.25)
@@ -57,11 +62,18 @@ def drawDeclinationContours (map, lon, lat, dec):
 def drawDeclinationVectors (map, lon, lat, udec, vdec):
     map.quiver (lon, lat, udec, vdec, scale = 12, color = 'r') # Larger scale for smaller vectors
 
-def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax):
-    FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)    
-    PAUSESECONDS = 0.00001 # Nonzero value seems to be required
-    LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html
-    
+def drawLine (map, id, lonLast, latLast, lon, lat, moves, miles):
+    LINECOLOR = 'lime' # https://matplotlib.org/examples/color/named_colors.html    
+    if id in lonLast:
+        # Draw a line
+        lons = [lonLast [id], lon]
+        lats = [latLast [id], lat]
+        map.plot (lons, lats, linewidth = 1.2, color = LINECOLOR, latlon = True)
+        moves += 1
+        miles += milesMoved (lonLast [id], latLast [id], lon, lat)
+    return moves, miles
+
+def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax):    
     # Shark waypoints. There can be multiple ids so lonLast and latLast are vectors indexed by id
     lonLast = {}
     latLast = {}
@@ -74,35 +86,15 @@ def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmi
         dat = row [COL_DATE]        
         lon = row [2]
         lat = row [3]
-        if id in lonLast:
-            # Draw a line
-            lons = [lonLast [id], lon]
-            lats = [latLast [id], lat]
-            map.plot (lons, lats, linewidth = 1.2, color = LINECOLOR, latlon = True)
-            moves += 1
-            miles += milesMoved (lonLast [id], latLast [id], lon, lat)
-        if datLast.dayofyear != dat.dayofyear:
-            # Move N days forward, where N=1,2,3...
-            for dayofyear in range (datLast.dayofyear, dat.dayofyear):
-                imgFile = ('outputs/gallagher{:03d}.{}' . format (imgLast, IMGEXTENSION)) 
-                datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
-                movesAndMiles = '{} moves, {} miles' . format (moves, int (miles + 0.5))
-                print (str (datFile) + ": " + imgFile + " (" + movesAndMiles + ")")
-                plt.title (FILEBATHYSPHERE + '\n' + FILESHARK + '\n' + datFile.strftime ('%Y/%m/%d') + \
-                           ' [' + movesAndMiles + '] ' + \
-                           str (int (lonmin - 0.1)) + '<lon<' + str (int (lonmax - 0.1)) + ' ' + \
-                           str (int (latmin + 0.1)) + '<lat<' + str (int (latmax + 0.1)))
-                plt.savefig (imgFile)
-                imgLast += 1
-                moves = 0
-                miles = 0
+        moves, miles = drawLine (map, id, lonLast, latLast, lon, lat, moves, miles)
+        imgLast, moves, miles = moveDaysForward (isBetterMap, FILESHARK, datLast, dat, \
+                                                 lonmin, lonmax, latmin, latmax, imgLast, moves, miles)
         lonLast [id] = lon
         latLast [id] = lat
         datLast = dat
-        # Besides the delay, this also seems trigger the display, and without it nothing appears
-        plt.pause (PAUSESECONDS)
                 
 def loadBathysphere (isBetterMap):
+    print ("loadBathysphere")
     FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)
 
     # Based on https://matplotlib.org/basemap/users/examples.html. The parameter
@@ -135,71 +127,53 @@ def loadBathysphere (isBetterMap):
     return elecdf, loncdf, latcdf
 
 def loadCurrent(map, lonmin, lonmax, latmin, latmax):
+    print ("loadCurrent")
     FILENAMECURRENT = 'data.nodc.noaa.gov/ofs_atl.t00z.n000.20170321.grb.grib2.nc'
     f = netcdf.netcdf_file (FILENAMECURRENT, 'r', mmap = False)
 
-    # We have available way too many points - 55,000 just in our desired lon/lat range alone. So
-    # we filter out just what we want here so later processing is not unacceptably slow
-    ucdf = f.variables ['u-component_of_current_hybrid_layer']
-    vcdf = f.variables ['v-component_of_current_hybrid_layer']    
-    loncdf = f.variables ['Longitude_of_U_Wind_Component_of_Velocity_surface']
-    latcdf = f.variables ['Latitude_of_U_Wind_Component_of_Velocity_surface']    
-    nxTooMany = ucdf[0][0].shape[0]
-    nyTooMany = ucdf[0][0].shape[1]
-    lonTooMany=[]
-    latTooMany=[]
-    uTooMany=[]
-    vTooMany=[]
-    for xTooMany in range (nxTooMany):
-        for yTooMany in range (nyTooMany):
-            if not math.isnan(ucdf[0][0][xTooMany][yTooMany]) and not math.isnan(vcdf[0][0][xTooMany][yTooMany]):
-                if lonmin<=loncdf[xTooMany][yTooMany] and loncdf[xTooMany][yTooMany]<=lonmax and \
-                   latmin<=latcdf[xTooMany][yTooMany] and latcdf[xTooMany][yTooMany]<=latmax:
-                    lonTooMany.append(loncdf[xTooMany][yTooMany])
-                    latTooMany.append(latcdf[xTooMany][yTooMany])
-                    uTooMany.append(ucdf[0][0][xTooMany][yTooMany])
-                    vTooMany.append(vcdf[0][0][xTooMany][yTooMany])
-                    
-    # Still too many, so lets make an nx x ny grid
-    nx = 20
-    ny = 20
-    lon = np.zeros((nx, ny))
-    lat = np.zeros((nx, ny))
-    u = np.zeros((nx, ny))
-    v = np.zeros((nx, ny))
-    for x in range (nx):
-        for y in range (ny):
-            lon [x][y] = lonmin + (lonmax - lonmin) * float (x) / float (nx - 1)            
-            lat [x][y] = latmin + (latmax - latmin) * float (y) / float (ny - 1)
-            # Find closest lon/lat point
-            isFirst = True
-            closestDistanceSquared = 0
-            for iTooMany in range (len (lonTooMany)):
-                lonT = lonTooMany[iTooMany]
-                latT = latTooMany[iTooMany]
-                # Preliminary filtering for efficiency
-                if lon [x][y] - 0.1 < lonT and lonT < lon [x][y] + 0.1 and lat [x][y] - 0.1 < latT and latT  < lat [x][y] + 0.1:
-                    # Slower processing of close points
-                    distanceSquared = (lon [x][y] - lonT) * (lon [x][y] - lonT) + (lat [x][y] - latT) * (lat [x][y] - latT)
-                    if isFirst or distanceSquared < closestDistanceSquared:
-                        # Save this as the best so far
-                        isFirst = False
-                        closestDistanceSquared = distanceSquared
-                        uClosest = uTooMany[iTooMany]
-                        vClosest = vTooMany[iTooMany]
-            if isFirst:
-                # All nearby original u and v values must have been NaN
-                u [x][y] = 0
-                v [x][y] = 0
-            else:
-                # Save the closest
-                u [x][y] = uClosest
-                v [x][y] = vClosest
+    loncdf = f.variables ['Longitude_of_U_Wind_Component_of_Velocity_surface'] # 1684x1200
+    latcdf = f.variables ['Latitude_of_U_Wind_Component_of_Velocity_surface'] # 1684x1200
+    ucdf = f.variables ['u-component_of_current_hybrid_layer'] # 1x1x1684x1200
+    vcdf = f.variables ['v-component_of_current_hybrid_layer'] # 1x1x1684x1200
+    nx = len (loncdf.data)
+    ny = len (loncdf.data[0])
+
+    # Griddata wants 1D versus 2D. We need to discard all points associated with u=NaN or v=NaN
+    pointsRaw = []
+    uRaw = []
+    vRaw = []
+    for i in range (nx):
+        for j in range (ny):
+            u = ucdf.data[0][0][i][j]
+            v = vcdf.data[0][0][i][j]
+            if not np.isnan(u) and not np.isnan(v):
+                pointsRaw.append ([loncdf.data[i][j], latcdf.data[i][j]])
+                uRaw.append (u)
+                vRaw.append (v)
+
+    # Desired grid is computed using list comprehension
+    lonstep = 10 # Degrees
+    latstep = 10 # Degrees
+    LONLATSTEP = 3
+    desired = [[i, j] for j in range (latmin, latmax + 1, LONLATSTEP) for i in range (lonmin, lonmax + 1, LONLATSTEP)]
+
+    # Interpolate
+    u = griddata (pointsRaw, uRaw, desired, method = 'linear', fill_value = 0.0)
+    v = griddata (pointsRaw, vRaw, desired, method = 'linear', fill_value = 0.0)
+
+    # Numpy nicely allows extracting individual components
+    nx = len (desired)
+    ny = len (desired  [0])
+    lon = np.array (desired) [:, 0]
+    lat = np.array (desired) [:, 1]
+
+    # Convert to basemap units
     lonMapped, latMapped = map (lon, lat)
 
     return lonMapped, latMapped, u, v
 
 def loadDeclination (map, lonmin, lonmax, latmin, latmax):
+    print ("loadDeclination")
     FILEDECLINATION = 'ngdc.noaa.gov-geomag/D_Grid_mf_2020.grd'
     f = netcdf.netcdf_file (FILEDECLINATION, 'r', mmap = False)
     x = f.variables ['x']
@@ -278,6 +252,7 @@ def loadMapParameters (isBetterMap):
     return FILEBATHYSPHERE, ELEVARIABLE
 
 def loadSharkPath (FILESHARK):
+    print ("loadSharkPath")
     waypoints = []
     with open (FILESHARK, 'r') as f:
         reader = csv.DictReader (f, delimiter = '\t') # Read tab separated values
@@ -290,7 +265,7 @@ def loadSharkPath (FILESHARK):
             classStr = line ['class']
 
             # Only keep the good data
-            if classStr == '0' or classStr == '1' or classStr == '2':
+            if classStr == '0' or classStr == '1' or classStr == '2' or classStr == '3':
                 id = int (idStr)
                 lon = float (lonStr)
                 lat = float (latStr)
@@ -304,8 +279,8 @@ def main():
     # Some settings
     is3d = False
     isBetterMap = True
-    contours = np.array([-5500., -5000., -4500., -4000., -3500., -3000., -2500., -2000., \
-                         -1500., -1000., -500., 0., 500., 1000., 1500.]) # limits are -5443 to 12898 (elemin to elemax)
+    contours = np.array([-11000., -10000., -9000., -5000., -3000., -1500,
+                         0., 1500., 3000.])
 
     # Grids should be preprocessed to have these bounds
     lonmin = -80
@@ -366,6 +341,32 @@ def milesMoved (lonLast, latLast, lon, lat):
     z = RADIUSEARTH * math.sin (lat)
     distance = math.sqrt ((x - xLast) * (x - xLast) + (y - yLast) * (y - yLast) + (z - zLast) * (z - zLast))
     return distance
+
+def moveDaysForward (isBetterMap, FILESHARK, datLast, dat, lonmin, lonmax, latmin, latmax, imgLast, moves, miles):
+    PAUSESECONDS = 0.00001 # Nonzero value seems to be required    
+    FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)    
+    if datLast.dayofyear != dat.dayofyear:
+
+        # Besides the delay, this also seems trigger the display, and without it nothing appears.
+        # We do this when the date has changed once, but before the loop below which will
+        # repeat (after the first iteration) for days in which nothing happens so a plot would be unhelpful
+        plt.pause (PAUSESECONDS)
+        
+        # Move N days forward, where N=1,2,3...
+        for dayofyear in range (datLast.dayofyear, dat.dayofyear):
+            imgFile = ('outputs/gallagher{:03d}.{}' . format (imgLast, IMGEXTENSION)) 
+            datFile = datetime.datetime(dat.year, 1, 1) + datetime.timedelta(dayofyear - 1)
+            movesAndMiles = '{} moves, {} miles' . format (moves, int (miles + 0.5))
+            print (str (datFile) + ": " + imgFile + " (" + movesAndMiles + ")")
+            plt.title (FILEBATHYSPHERE + '\n' + FILESHARK + '\n' + datFile.strftime ('%Y/%m/%d') + \
+                       ' [' + movesAndMiles + '] ' + \
+                       str (int (lonmin - 0.1)) + '<lon<' + str (int (lonmax - 0.1)) + ' ' + \
+                       str (int (latmin + 0.1)) + '<lat<' + str (int (latmax + 0.1)))
+            plt.savefig (imgFile)
+            imgLast += 1
+            moves = 0
+            miles = 0
+    return imgLast, moves, miles
 
 main()
 
