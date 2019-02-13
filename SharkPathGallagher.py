@@ -73,7 +73,7 @@ def drawLine (map, id, lonLast, latLast, lon, lat, moves, miles):
         miles += milesMoved (lonLast [id], latLast [id], lon, lat)
     return moves, miles
 
-def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax):    
+def drawSharkPath (map, isBetterMap, FILESHARK, fKml, waypoints, lonmin, lonmax, latmin, latmax):    
     # Shark waypoints. There can be multiple ids so lonLast and latLast are vectors indexed by id
     lonLast = {}
     latLast = {}
@@ -81,18 +81,134 @@ def drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmi
     imgLast = 0
     moves = 0
     miles = 0
+    kmlPoints = {} # First index is id, second index is date, value is '<lon>,<lat>' string
     for row in waypoints:
         id  = row [0]
-        dat = row [COL_DATE]        
+        dat = row [COL_DATE]
+        # For debugging
+        #if dat > pd.to_datetime ('10/21/2015', format='%m/%d/%Y'):
+        #    break;
         lon = row [2]
         lat = row [3]
         moves, miles = drawLine (map, id, lonLast, latLast, lon, lat, moves, miles)
         imgLast, moves, miles = moveDaysForward (isBetterMap, FILESHARK, datLast, dat, \
                                                  lonmin, lonmax, latmin, latmax, imgLast, moves, miles)
+        kmlFileWrite (fKml, kmlPoints, id, dat, lon, lat)
+        
         lonLast [id] = lon
         latLast [id] = lat
         datLast = dat
-                
+    kmlFileWriteAll (fKml, kmlPoints)
+    kmlFileClose (fKml)
+    
+def kmlFileClose (fKml):
+    fKml.write ('</Document>\n')
+    fKml.write ('</kml>\n')
+
+def kmlFileOpen (idsForKml):    
+    FILEKML = 'outputs/gallagher.kml'
+    fKml = open (FILEKML, 'w')
+    fKml.write ('<?xml version="1.0" encoding="UTF-8"?>\n')
+    fKml.write ('<kml xmlns="http://www.opengis.net/kml/2.2">\n')
+    fKml.write ('<Document>\n')
+    fKml.write ('  <LookAt>\n')
+    fKml.write ('    <longitude>-68.38</longitude>\n')
+    fKml.write ('    <latitude>41.27</latitude>\n')
+    fKml.write ('    <altitude>0</altitude>\n')
+    fKml.write ('    <range>687414</range>\n')
+    fKml.write ('    <tilt>0.0303</tilt>\n')
+    fKml.write ('    <heading>2.59</heading>\n')                
+    fKml.write ('  </LookAt>\n')
+    return fKml
+
+def kmlFileWrite (fKml, kmlPoints, id, dat, lon, lat):
+    LIFETIME = datetime.timedelta(hours=4)
+    if not id in kmlPoints:
+        kmlPoints [id] = {}
+    kmlPoints [id] [dat] = '{},{}' . format (lon, lat)
+    
+def kmlFileWriteAll (fKml, kmlPoints):
+    # Colors to disinguish sharks and also match points with paths
+    colors = ['ffff0000', \
+              'ff00ff00', \
+              'ff0000ff', \
+              'ffff00ff', \
+              'ff00ffff', \
+              'ffffff00', \
+              'ffffffff']
+    for indexColor in range (len (colors)):
+        color = colors [indexColor]
+        fKml.write ('  <StyleMap id="mapcolor{}">\n' . format (indexColor))
+        fKml.write ('    <Pair>\n')
+        fKml.write ('      <key>normal</key>\n')
+        fKml.write ('      <styleUrl>#color{}</styleUrl>\n' . format (indexColor))
+        fKml.write ('    </Pair>\n')
+        fKml.write ('    <Pair>\n')
+        fKml.write ('      <key>highlight</key>\n')
+        fKml.write ('      <styleUrl>#color{}</styleUrl>\n' . format (indexColor))
+        fKml.write ('    </Pair>\n')                
+        fKml.write ('  </StyleMap>\n')
+        fKml.write ('  <Style id="color{}">\n' . format (indexColor))
+        fKml.write ('    <BalloonStyle>\n')
+        fKml.write ('      <displayMode>{}</displayMode>\n' . format ('default'))                        
+        fKml.write ('      <bgColor>{}</bgColor>\n' . format (color))                
+        fKml.write ('      <textColor>{}</textColor>\n' . format (color))        
+        fKml.write ('      <color>{}</color>\n' . format (color))
+        fKml.write ('    </BalloonStyle>\n')
+        fKml.write ('    <IconStyle>\n')
+        fKml.write ('      <color>{}</color>\n' . format (color))                
+        fKml.write ('    </IconStyle>\n')
+        fKml.write ('    <LabelStyle>\n')
+        fKml.write ('      <color>{}</color>\n' . format (color))                
+        fKml.write ('    </LabelStyle>\n')                
+        fKml.write ('    <LineStyle>\n')
+        fKml.write ('      <color>{}</color>\n' . format (color))
+        fKml.write ('      <width>{}</width>\n' . format (2.0))        
+        fKml.write ('    </LineStyle>\n')
+        fKml.write ('    <PolyStyle>\n')
+        fKml.write ('      <color>{}</color>\n' . format (color))                
+        fKml.write ('    </PolyStyle>\n')                        
+        fKml.write ('  </Style>\n')
+    # First write out points for each id
+    indexId = 0
+    indexColor = 0
+    for id in kmlPoints.keys():
+        fKml.write ('  <Folder>\n')
+        fKml.write ('    <name>{}</name>\n' . format (id))
+        pointsForId = kmlPoints [id]
+        indexPoint = 0
+        for dat in pointsForId.keys():
+            kml = '    <Placemark>\n'
+            kml += '      <name>{}_{}</name>\n' . format (id, indexPoint)
+            indexPoint += 1
+            kml += '      <styleUrl>#mapcolor{}</styleUrl>\n' . format (indexColor)
+            kml += '      <TimeStamp>{}</TimeStamp>\n' . format (dat.strftime ('%Y-%m-%dT%H:%M:%SZ')) # 2000-01-01T09:00:00Z
+            kml += '      <Point>\n'
+            kml += '        <coordinates>{},0</coordinates>\n' . format (pointsForId [dat]) # No spaces are allowed!
+            kml += '      </Point>\n'
+            kml += '    </Placemark>\n'
+            fKml.write (kml)
+        fKml.write ('  </Folder>\n')
+        indexId += 1
+        indexColor = (indexColor + 1) % len (colors)
+    # Now write out path for each id
+    indexColor = 0
+    for id in kmlPoints.keys():
+        fKml.write ('  <Placemark>\n')
+        fKml.write ('    <name>path_{}</name>\n' . format (id))
+        fKml.write ('    <styleUrl>#color{}</styleUrl>\n' . format (indexColor))
+        fKml.write ('    <LineString>\n')
+        fKml.write ('      <tessellate>1</tessellate>\n')
+        fKml.write ('      <altitudeMode>absolute</altitudeMode>\n')
+        fKml.write ('      <coordinates>');
+        pointsForId = kmlPoints [id]        
+        for dat in pointsForId:
+            fKml.write ('{} ' . format (pointsForId [dat]));
+        fKml.write ('</coordinates>');            
+        fKml.write ('    </LineString>\n')                
+        fKml.write ('  </Placemark>\n')
+        indexColor = (indexColor + 1) % len (colors)
+        
 def loadBathysphere (isBetterMap):
     print ("loadBathysphere")
     FILEBATHYSPHERE, ELEVARIABLE = loadMapParameters (isBetterMap)
@@ -254,6 +370,7 @@ def loadMapParameters (isBetterMap):
 def loadSharkPath (FILESHARK):
     print ("loadSharkPath")
     waypoints = []
+    idsForKml = {}
     with open (FILESHARK, 'r') as f:
         reader = csv.DictReader (f, delimiter = '\t') # Read tab separated values
         headers = reader.fieldnames
@@ -267,13 +384,14 @@ def loadSharkPath (FILESHARK):
             # Only keep the good data
             if classStr == '0' or classStr == '1' or classStr == '2' or classStr == '3':
                 id = int (idStr)
+                idsForKml [id] = True
                 lon = float (lonStr)
                 lat = float (latStr)
                 dat = pd.to_datetime (dateStr, format='%m/%d/%y %H:%M')
                 waypoints.append ([id, dat, lon, lat]) # COL_DATE must match position here!
     # For some reason the data is not in chronological order so sort it
     waypoints = sorted (waypoints, key = lambda row:row[COL_DATE])
-    return waypoints
+    return waypoints, idsForKml
 
 def main():
     # Some settings
@@ -294,12 +412,13 @@ def main():
     elecdf, loncdf, latcdf = loadBathysphere (isBetterMap)
     lonCurrent, latCurrent, uCurrent, vCurrent = loadCurrent (map, lonmin, lonmax, latmin, latmax)
     lonDeclination, latDeclination, declination, udec, vdec = loadDeclination (map, lonmin, lonmax, latmin, latmax)
-    waypoints = loadSharkPath (FILESHARK)
+    waypoints, idsForKml = loadSharkPath (FILESHARK)
+    fKml = kmlFileOpen (idsForKml)
     #drawDeclinationContours (map, lonDeclination, latDeclination, declination)
     drawBathysphere (map, elecdf, loncdf, latcdf, contours)
     drawDeclinationVectors (map, lonDeclination, latDeclination, udec, vdec) # Fails if before drawBathysphere
     drawCurrent (map, lonCurrent, latCurrent, uCurrent, vCurrent) # Fails if before drawBathysphere
-    drawSharkPath (map, isBetterMap, FILESHARK, waypoints, lonmin, lonmax, latmin, latmax) # Main plotting loop
+    drawSharkPath (map, isBetterMap, FILESHARK, fKml, waypoints, lonmin, lonmax, latmin, latmax) # Main plotting loop
     
     # Scale values are pixels with 958x719 for dpi=150, or 1916x1438 for dpi=300 (too big for Discord).
     # setpts value is smaller for faster movement and smaller file
