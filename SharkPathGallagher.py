@@ -117,7 +117,7 @@ def kmlFileOpen (idsForKml):
     fKml.write ('    <altitude>0</altitude>\n')
     fKml.write ('    <range>687414</range>\n')
     fKml.write ('    <tilt>0.0303</tilt>\n')
-    fKml.write ('    <heading>2.59</heading>\n')                
+    fKml.write ('    <heading>0</heading>\n')                
     fKml.write ('  </LookAt>\n')
     return fKml
 
@@ -169,44 +169,52 @@ def kmlFileWriteAll (fKml, kmlPoints):
         fKml.write ('      <color>{}</color>\n' . format (color))                
         fKml.write ('    </PolyStyle>\n')                        
         fKml.write ('  </Style>\n')
-    # First write out points for each id
     indexId = 0
     indexColor = 0
     for id in kmlPoints.keys():
-        fKml.write ('  <Folder>\n')
-        fKml.write ('    <name>{}</name>\n' . format (id))
         pointsForId = kmlPoints [id]
+
+        datFirst = list (pointsForId.keys())[0]
+        datLast = list (pointsForId.keys()) [len (pointsForId) - 1]
+        numberDays = (datLast - datFirst).days
+        fKml.write ('  <Folder>\n')
+        fKml.write ('    <name>{}_{}days</name>\n' . format (id, numberDays))
+        fKml.write ('    <Folder>\n')
+        fKml.write ('      <name>waypoints</name>\n')
         indexPoint = 0
         for dat in pointsForId.keys():
-            kml = '    <Placemark>\n'
-            kml += '      <name>{}_{}</name>\n' . format (id, indexPoint)
+            # First write out points for this id            
+            fKml.write ('      <Placemark>\n')
+            fKml.write ('        <name>{}_{}</name>\n' . format (id, indexPoint))
             indexPoint += 1
-            kml += '      <styleUrl>#mapcolor{}</styleUrl>\n' . format (indexColor)
-            kml += '      <TimeStamp>{}</TimeStamp>\n' . format (dat.strftime ('%Y-%m-%dT%H:%M:%SZ')) # 2000-01-01T09:00:00Z
-            kml += '      <Point>\n'
-            kml += '        <coordinates>{},0</coordinates>\n' . format (pointsForId [dat]) # No spaces are allowed!
-            kml += '      </Point>\n'
-            kml += '    </Placemark>\n'
-            fKml.write (kml)
-        fKml.write ('  </Folder>\n')
-        indexId += 1
-        indexColor = (indexColor + 1) % len (colors)
-    # Now write out path for each id
-    indexColor = 0
-    for id in kmlPoints.keys():
-        fKml.write ('  <Placemark>\n')
-        fKml.write ('    <name>path_{}</name>\n' . format (id))
-        fKml.write ('    <styleUrl>#color{}</styleUrl>\n' . format (indexColor))
-        fKml.write ('    <LineString>\n')
-        fKml.write ('      <tessellate>1</tessellate>\n')
-        fKml.write ('      <altitudeMode>absolute</altitudeMode>\n')
-        fKml.write ('      <coordinates>');
+            fKml.write ('        <styleUrl>#mapcolor{}</styleUrl>\n' . format (indexColor))
+            fKml.write ('        <TimeStamp>{}</TimeStamp>\n' . format (dat.strftime ('%Y-%m-%dT%H:%M:%SZ'))) # 2000-01-01T09:00:00Z
+            fKml.write ('        <Point>\n')
+            fKml.write ('          <coordinates>{},0</coordinates>\n' . format (pointsForId [dat])) # No spaces are allowed!
+            fKml.write ('        </Point>\n')
+            fKml.write ('      </Placemark>\n')
+        fKml.write ('    </Folder>\n')            
+        # Now write out path for this id        
+        fKml.write ('    <Placemark>\n')
+        fKml.write ('      <name>path</name>\n')
+        fKml.write ('      <styleUrl>#color{}</styleUrl>\n' . format (indexColor))
+        fKml.write ('      <LineString>\n')
+        fKml.write ('        <tessellate>1</tessellate>\n')
+        fKml.write ('        <altitudeMode>absolute</altitudeMode>\n')
+        fKml.write ('        <coordinates>');
         pointsForId = kmlPoints [id]        
         for dat in pointsForId:
             fKml.write ('{} ' . format (pointsForId [dat]));
         fKml.write ('</coordinates>');            
-        fKml.write ('    </LineString>\n')                
-        fKml.write ('  </Placemark>\n')
+        fKml.write ('      </LineString>\n')                
+        fKml.write ('    </Placemark>\n')            
+        fKml.write ('  </Folder>\n')
+        indexId += 1
+        indexColor = (indexColor + 1) % len (colors)
+
+    indexColor = 0
+    for id in kmlPoints.keys():
+
         indexColor = (indexColor + 1) % len (colors)
         
 def loadBathysphere (isBetterMap):
