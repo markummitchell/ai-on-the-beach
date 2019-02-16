@@ -64,6 +64,28 @@ def loadCurrent():
         LinearNDInterpolator (lonlat, u), \
         LinearNDInterpolator (lonlat, v)
 
+def loadDeclination ():
+    print ("loadDeclination")
+    googleIdDeclination = '1KL-brszjyfiX7yAp_-ZEBbereOm-26lz' # Extracted from share url
+    tmpDeclination = '/tmp/tempDeclination.nc'
+    # Download the file from url and save it locally
+    if os.path.exists(tmpDeclination):
+        os.remove (tmpDeclination) # Download will fail if file already exists
+    gdd.download_file_from_google_drive (file_id = googleIdDeclination,
+                                         dest_path = tmpDeclination)
+    with netcdf.netcdf_file (tmpDeclination, 'r', mmap = False) as f:
+        loncdf = f.variables ['x']
+        latcdf = f.variables ['y']
+        deccdf = f.variables ['z']        
+
+    # Transpose lat/lon to lon/lat
+    dec = np.transpose (deccdf.data)
+    
+    # Create an interpolator. This is a regular grid so we use a regular grid interpolator that
+    # exploits the regularity to achieve the most efficient search
+    
+    return RegularGridInterpolator ((loncdf.data, latcdf.data), dec)
+
 def loadSharkPath():
     print ("loadSharkPath")        
     # Upload the CSV Here
@@ -74,10 +96,11 @@ def loadSharkPath():
     # df = pd.read_csv(io.BytesIO(uploaded[
     #     'Beneath The Waves - Blue Shark Atlantic - Data Jan 21, 2019.csv'])) 
 
-    df = pd.read_csv(
-        'https://drive.google.com/uc?id=1XtdF630BEDDv-ixbZ6cE4RJlbVwukiUU&export=download'
-    )
-
+    googleFile = 'https://drive.google.com/uc?id=1XtdF630BEDDv-ixbZ6cE4RJlbVwukiUU&export=download'
+    print ('Downloading {}... ' . format (googleFile), end='')    
+    df = pd.read_csv(googleFile)
+    print ('Done.')
+    
     # Now that we have uploaded the Data we can see it as a Dataframe
     df.head()
 
@@ -132,4 +155,5 @@ def loadSharkPath():
 
 loadBathysphere()
 loadCurrent()
+loadDeclination()
 loadSharkPath()
