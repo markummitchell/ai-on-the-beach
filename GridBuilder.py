@@ -3,6 +3,7 @@
 from datetime import datetime
 from google_drive_downloader import GoogleDriveDownloader as gdd
 import io
+import math
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap, cm
 import numpy as np
@@ -12,6 +13,60 @@ from scipy.interpolate import LinearNDInterpolator, RegularGridInterpolator
 from scipy.io import netcdf
 import shutil
 import tempfile
+
+def appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV):   
+    # Create arrays with depth and downstream/upstream depth changes for each lon/lat coordinate
+    depths = np.zeros((df.shape))
+    depthChangeDownstream = np.zeros((df.shape))    
+    depthChangeUpstream = np.zeros((df.shape))
+    indexTo = 0
+    for id, row in df.iterrows():
+        lon = df.at [id, 'long']
+        lat = df.at [id, 'lat']
+
+        # Perform interpolations
+        depth = interpBathysphere ([lon, lat])
+        u = interpCurrentU ([lon, lat])
+        v = interpCurrentV ([lon, lat])
+
+        # Get downstream and upstream points
+        lonDownstream, latDownstream = separatedPoints (lon, lat, u, v)
+        lonUpstream, latUpstream = separatedPoints (lon, lat, -1.0 * u, -1.0 * v)
+
+        # More interpolations at downstream and upstream points
+        depthDownstream = interpBathysphere ([lonDownstream, latDownstream])
+        depthUpstream = interpBathysphere ([lonUpstream, latUpstream])
+        
+        # Save results
+        depths [indexTo] = depth
+        depthChangeDownstream [indexTo] = depthDownstream - depth
+        depthChangeUpstream [indexTo] = depth - depthUpstream
+        
+        indexTo += 1
+        
+    # Convert the arrays into dataframes
+    dfDepth = pd.DataFrame({'depth': depths.tolist()})
+    dfDepthChangeDownstream = pd.DataFrame({'depthChangeDownstream': depthChangeDownstream.tolist()})
+    dfDepthChangeUpstream = pd.DataFrame({'depthChangeUpstream': depthChangeUpstream.tolist()})    
+
+    # https://stackoverflow.com/questions/20602947/append-column-to-pandas-dataframe
+    # explains why we have to sync the indexes of the two arrays since the df indexes
+    # skips some values due to earlier filtering
+    df.reset_index(drop=True)
+    dfDepth.reset_index(drop=True)
+    dfDepthChangeDownstream.reset_index(drop=True)
+    dfDepthChangeUpstream.reset_index(drop=True)        
+    
+    df = df.join (dfDepth)
+    df.reset_index(drop=True)
+    
+    df = df.join (dfDepthChangeDownstream)
+    df.reset_index(drop=True)
+    
+    df = df.join (dfDepthChangeUpstream)
+    df.reset_index(drop=True)
+    
+    return df
 
 def check (interp, title):
     lonmin = -80
@@ -48,7 +103,6 @@ def loadBathysphere ():
 
     # Create an interpolator. This is a regular grid so we use a regular grid interpolator that
     # exploits the regularity to achieve the most efficient search
-    
     return RegularGridInterpolator ((loncdf.data, latcdf.data), ele)
 
 def loadCurrent():
@@ -103,7 +157,6 @@ def loadDeclination ():
     
     # Create an interpolator. This is a regular grid so we use a regular grid interpolator that
     # exploits the regularity to achieve the most efficient search
-    
     return RegularGridInterpolator ((loncdf.data, latcdf.data), dec)
 
 def loadSharkPath():
@@ -173,6 +226,26 @@ def loadSharkPath():
     cleaned_df.head()
     return cleaned_df
 
+def separatedPoints (lon, lat, u, v):
+    # Google Map investigation of Greater Bank bathysphere data suggests the 2 points used
+    # upstream and downstream (in terms of the current) should be about 100 miles from the
+    # center point
+    separationKilometers = 100.0 * (1.6 / 1.0)
+    earthRadiusKilometers = 6378.16
+
+    # Normalize u and v so together they have unit magnitude
+    mag = math.sqrt (u * u + v * v)
+    u = u / mag # Longitude component
+    v = v / mag # Latitude component
+    
+    # For small enough separationKilometers, we can ignore the distortion caused by the
+    # longitude lines joining at the north pole, and just add longitude and latitude
+    # deltas calculated as simply proportional to u and v
+    angleSeparation = separationKilometers / earthRadiusKilometers # Great circle angle in radians
+    lonNew = lon + math.cos (u * angleSeparation)
+    latNew = lat + math.sin (v * angleSeparation)
+    return lonNew, latNew
+    
 interpBathysphere = loadBathysphere()
 check (interpBathysphere, 'Bathysphere')
 interpCurrentU, interpCurrentV = loadCurrent()
@@ -180,4 +253,5 @@ check (interpCurrentU, 'CurrentU')
 check (interpCurrentV, 'CurrentV')
 interpDeclination = loadDeclination()
 check (interpDeclination, 'Declination')
-loadSharkPath()
+df = loadSharkPath()
+appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV)
