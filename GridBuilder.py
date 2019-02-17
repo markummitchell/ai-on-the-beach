@@ -9,17 +9,19 @@ import pandas as pd
 from scipy.interpolate import LinearNDInterpolator, RegularGridInterpolator
 from scipy.io import netcdf
 import shutil
+import tempfile
 
 def loadBathysphere ():
     print ("loadBathysphere")
     googleIdBathysphere = '10VqbV2oNUVcvS6lLP3FekVlFM4LUJj5o' # Extracted from share url
-    tmpBathysphere = '/tmp/tempBathysphere.nc'
+    tmpBathysphere = tempfile.NamedTemporaryFile (suffix = '.nc', \
+                                                  prefix = 'tempBathysphere', \
+                                                  delete = True) # Need file name but not the file or gdd fails
+    tmpBathysphere.close()
     # Download the file from url and save it locally
-    if os.path.exists(tmpBathysphere):
-        os.remove (tmpBathysphere) # Download will fail if file already exists
     gdd.download_file_from_google_drive (file_id = googleIdBathysphere,
-                                         dest_path = tmpBathysphere)
-    with netcdf.netcdf_file (tmpBathysphere, 'r', mmap = False) as f:
+                                         dest_path = tmpBathysphere.name)
+    with netcdf.netcdf_file (tmpBathysphere.name, 'r', mmap = False) as f:
         loncdf = f.variables ['lon']
         latcdf = f.variables ['lat']
         elecdf = f.variables ['Band1']        
@@ -36,13 +38,14 @@ def loadBathysphere ():
 def loadCurrent():
     print ("loadCurrent")    
     googleIdCurrent = '1PZrkKXh0LQ5-4tvW04FOw0z-vdNI39ru' # Extracted from share url
-    tmpCurrent = '/tmp/tempCurrent.nc'
+    tmpCurrent = tempfile.NamedTemporaryFile (suffix = '.nc', \
+                                              prefix = 'tempCurrent', \
+                                              delete = True) # Need file name but not the file or gdd fails
+    tmpCurrent.close()
     # Download the file from url and save it locally
-    if os.path.exists(tmpCurrent):
-        os.remove (tmpCurrent) # Download will fail if file already exists
     gdd.download_file_from_google_drive (file_id = googleIdCurrent, \
-                                         dest_path = tmpCurrent)
-    with netcdf.netcdf_file (tmpCurrent, 'r', mmap = False) as f:
+                                         dest_path = tmpCurrent.name)
+    with netcdf.netcdf_file (tmpCurrent.name, 'r', mmap = False) as f:
         loncdf = f.variables ['Longitude_of_U_Wind_Component_of_Velocity_surface']
         latcdf = f.variables ['Latitude_of_U_Wind_Component_of_Velocity_surface']
         ucdf = f.variables ['u-component_of_current_hybrid_layer'] # 1x1x1684x1200
@@ -67,13 +70,14 @@ def loadCurrent():
 def loadDeclination ():
     print ("loadDeclination")
     googleIdDeclination = '1KL-brszjyfiX7yAp_-ZEBbereOm-26lz' # Extracted from share url
-    tmpDeclination = '/tmp/tempDeclination.nc'
+    tmpDeclination = tempfile.NamedTemporaryFile (suffix = '.nc', \
+                                                  prefix = 'tempDeclination', \
+                                                  delete = True) # Need file name but not the file or gdd fails
+    tmpDeclination.close()
     # Download the file from url and save it locally
-    if os.path.exists(tmpDeclination):
-        os.remove (tmpDeclination) # Download will fail if file already exists
     gdd.download_file_from_google_drive (file_id = googleIdDeclination,
-                                         dest_path = tmpDeclination)
-    with netcdf.netcdf_file (tmpDeclination, 'r', mmap = False) as f:
+                                         dest_path = tmpDeclination.name)
+    with netcdf.netcdf_file (tmpDeclination.name, 'r', mmap = False) as f:
         loncdf = f.variables ['x']
         latcdf = f.variables ['y']
         deccdf = f.variables ['z']        
@@ -153,7 +157,28 @@ def loadSharkPath():
     cleaned_df.head()
     return cleaned_df
 
-loadBathysphere()
+interp = loadBathysphere()
 loadCurrent()
 loadDeclination()
 loadSharkPath()
+
+from mpl_toolkits.basemap import Basemap, cm
+lonmin = -80
+lonmax = -35
+latmin = 10
+latmax = 45
+map = Basemap (projection = 'merc', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
+               llcrnrlat=latmin, urcrnrlat=latmax, \
+               llcrnrlon=lonmin, urcrnrlon=lonmax, \
+               rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)
+contours = [-5000.,-4000.,-3000.,-2000.,-1000.,0.,1000.,2000.,3000.,4000.]
+lons = np.zeros((10, 8))
+lats = np.zeros((10, 8))
+for i in range (10):
+    lon = -80 + i * 5
+    for j in range (8):
+        lat = 10 + j * 5
+        lons [i] [j] = lon
+        lats [i] [j] = lat
+values = interp (lons, lats)
+map.contourf (lons, lats, values, cmap = plt.cm.get_cmap('Blues'))
