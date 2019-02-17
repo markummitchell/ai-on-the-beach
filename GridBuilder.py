@@ -3,6 +3,8 @@
 from datetime import datetime
 from google_drive_downloader import GoogleDriveDownloader as gdd
 import io
+import matplotlib.pyplot as plt
+from mpl_toolkits.basemap import Basemap, cm
 import numpy as np
 import os
 import pandas as pd
@@ -10,6 +12,20 @@ from scipy.interpolate import LinearNDInterpolator, RegularGridInterpolator
 from scipy.io import netcdf
 import shutil
 import tempfile
+
+def check (interp, title):
+    lonmin = -80
+    lonmax = -35
+    latmin = 10
+    latmax = 45
+    lons = np.linspace (lonmin + 1, lonmax - 1, 240)
+    lats = np.linspace (latmin + 1, latmax - 1, 240)
+    lons, lats = np.meshgrid (lons, lats)
+    lonLat =  np.stack ((lons, lats), axis = -1)
+    values = interp (lonLat)
+    plt.title (title)
+    plt.pcolor (lons, lats, values)
+    plt.show()
 
 def loadBathysphere ():
     print ("loadBathysphere")
@@ -26,10 +42,10 @@ def loadBathysphere ():
         latcdf = f.variables ['lat']
         elecdf = f.variables ['Band1']        
         crscdf = f.variables ['crs'] # Do not know what this array contains, other than 1 character strings
-
+    
     # Transpose lat/lon to lon/lat
     ele = np.transpose (elecdf.data)
-    
+
     # Create an interpolator. This is a regular grid so we use a regular grid interpolator that
     # exploits the regularity to achieve the most efficient search
     
@@ -157,28 +173,11 @@ def loadSharkPath():
     cleaned_df.head()
     return cleaned_df
 
-interp = loadBathysphere()
-loadCurrent()
-loadDeclination()
+interpBathysphere = loadBathysphere()
+check (interpBathysphere, 'Bathysphere')
+interpCurrentU, interpCurrentV = loadCurrent()
+check (interpCurrentU, 'CurrentU')
+check (interpCurrentV, 'CurrentV')
+interpDeclination = loadDeclination()
+check (interpDeclination, 'Declination')
 loadSharkPath()
-
-from mpl_toolkits.basemap import Basemap, cm
-lonmin = -80
-lonmax = -35
-latmin = 10
-latmax = 45
-map = Basemap (projection = 'merc', lon_0 = lonmin, lat_0 = 90, lat_ts = latmin, \
-               llcrnrlat=latmin, urcrnrlat=latmax, \
-               llcrnrlon=lonmin, urcrnrlon=lonmax, \
-               rsphere=6371200., ellps = 'GRS67', resolution='l', area_thresh=1000)
-contours = [-5000.,-4000.,-3000.,-2000.,-1000.,0.,1000.,2000.,3000.,4000.]
-lons = np.zeros((10, 8))
-lats = np.zeros((10, 8))
-for i in range (10):
-    lon = -80 + i * 5
-    for j in range (8):
-        lat = 10 + j * 5
-        lons [i] [j] = lon
-        lats [i] [j] = lat
-values = interp (lons, lats)
-map.contourf (lons, lats, values, cmap = plt.cm.get_cmap('Blues'))
