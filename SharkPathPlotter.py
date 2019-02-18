@@ -255,10 +255,10 @@ def loadCurrent(map, lonmin, lonmax, latmin, latmax):
     FILENAMECURRENT = 'data.nodc.noaa.gov/ofs_atl.t00z.n000.20170321.grb.grib2.nc'
     f = netcdf.netcdf_file (FILENAMECURRENT, 'r', mmap = False)
 
-    loncdf = f.variables ['Longitude_of_U_Wind_Component_of_Velocity_surface'] # 1684x1200
-    latcdf = f.variables ['Latitude_of_U_Wind_Component_of_Velocity_surface'] # 1684x1200
-    ucdf = f.variables ['u-component_of_current_hybrid_layer'] # 1x1x1684x1200
-    vcdf = f.variables ['v-component_of_current_hybrid_layer'] # 1x1x1684x1200
+    loncdf = f.variables ['Longitude_of_Presure_Point_surface'] # 1684x1200
+    latcdf = f.variables ['Latitude_of_Presure_Point_surface'] # 1684x1200
+    ucdf = f.variables ['Barotropic_U_velocity_entire_ocean_single_layer'] # 1x1684x1200
+    vcdf = f.variables ['Barotropic_V_velocity_entire_ocean_single_layer'] # 1x1684x1200
     nx = len (loncdf.data)
     ny = len (loncdf.data[0])
 
@@ -268,8 +268,8 @@ def loadCurrent(map, lonmin, lonmax, latmin, latmax):
     vRaw = []
     for i in range (nx):
         for j in range (ny):
-            u = ucdf.data[0][0][i][j]
-            v = vcdf.data[0][0][i][j]
+            u = ucdf.data[0][i][j]
+            v = vcdf.data[0][i][j]
             if not np.isnan(u) and not np.isnan(v):
                 pointsRaw.append ([loncdf.data[i][j], latcdf.data[i][j]])
                 uRaw.append (u)

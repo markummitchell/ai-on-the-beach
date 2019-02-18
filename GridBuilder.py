@@ -80,10 +80,14 @@ def check (interp, title):
     values = interp (lonLat)
     plt.title (title)
     plt.pcolor (lons, lats, values)
+    plt.colorbar()
     plt.show()
 
 def loadBathysphere ():
     print ("loadBathysphere")
+
+    # https://www.gebco.net/data_and_products/gridded_bathymetry_data/
+    units = 'meters'    
     googleIdBathysphere = '10VqbV2oNUVcvS6lLP3FekVlFM4LUJj5o' # Extracted from share url
     tmpBathysphere = tempfile.NamedTemporaryFile (suffix = '.nc', \
                                                   prefix = 'tempBathysphere', \
@@ -103,11 +107,14 @@ def loadBathysphere ():
 
     # Create an interpolator. This is a regular grid so we use a regular grid interpolator that
     # exploits the regularity to achieve the most efficient search
-    return RegularGridInterpolator ((loncdf.data, latcdf.data), ele)
+    return units, RegularGridInterpolator ((loncdf.data, latcdf.data), ele)
 
 def loadCurrent():
-    print ("loadCurrent")    
-    googleIdCurrent = '1PZrkKXh0LQ5-4tvW04FOw0z-vdNI39ru' # Extracted from share url
+    print ("loadCurrent")
+
+    # https://data.nodc.noaa.gov/thredds/ncss/ncep/rtofs/2017/201703/ofs.20170321/surface/ofs_atl.t00z.n000.20170321.grb.grib2/dataset.html
+    googleIdCurrent = '1ZL2ABGc5uqtBt9DK0_m7CxJPMBgpDrW3' # Extracted from share url
+    
     tmpCurrent = tempfile.NamedTemporaryFile (suffix = '.nc', \
                                               prefix = 'tempCurrent', \
                                               delete = True) # Need file name but not the file or gdd fails
@@ -116,10 +123,11 @@ def loadCurrent():
     gdd.download_file_from_google_drive (file_id = googleIdCurrent, \
                                          dest_path = tmpCurrent.name)
     with netcdf.netcdf_file (tmpCurrent.name, 'r', mmap = False) as f:
-        loncdf = f.variables ['Longitude_of_U_Wind_Component_of_Velocity_surface']
-        latcdf = f.variables ['Latitude_of_U_Wind_Component_of_Velocity_surface']
-        ucdf = f.variables ['u-component_of_current_hybrid_layer'] # 1x1x1684x1200
-        vcdf = f.variables ['v-component_of_current_hybrid_layer'] # 1x1x1684x1200
+        loncdf = f.variables ['Longitude_of_Presure_Point_surface']
+        latcdf = f.variables ['Latitude_of_Presure_Point_surface']        
+        ucdf = f.variables ['Barotropic_U_velocity_entire_ocean_single_layer'] # 1x1684x1200
+        vcdf = f.variables ['Barotropic_V_velocity_entire_ocean_single_layer'] # 1x1684x1200
+        units = 'm.s-1'
 
     # Create interpolators. This is an irregular grid (not constant longitude and latitude points)
     # so an inefficient irregular grid is applied
@@ -131,15 +139,18 @@ def loadCurrent():
     for i in range (nx):
         for j in range (ny):
             lonlat.append ([loncdf[i][j], latcdf[i][j]])
-            u.append (ucdf[0][0][i][j])
-            v.append (vcdf[0][0][i][j])
-    return \
+            u.append (ucdf[0][i][j])
+            v.append (vcdf[0][i][j])
+    return units, \
         LinearNDInterpolator (lonlat, u), \
         LinearNDInterpolator (lonlat, v)
 
 def loadDeclination ():
     print ("loadDeclination")
-    googleIdDeclination = '1KL-brszjyfiX7yAp_-ZEBbereOm-26lz' # Extracted from share url
+
+    # https://maps.ngdc.noaa.gov/viewers/historical_declination/
+    units = 'Degrees'        
+    googleIdDeclination = '1KL-brszjyfiX7yAp_-ZEBbereOm-26lz' # Extracted from share url    
     tmpDeclination = tempfile.NamedTemporaryFile (suffix = '.nc', \
                                                   prefix = 'tempDeclination', \
                                                   delete = True) # Need file name but not the file or gdd fails
@@ -150,14 +161,14 @@ def loadDeclination ():
     with netcdf.netcdf_file (tmpDeclination.name, 'r', mmap = False) as f:
         loncdf = f.variables ['x']
         latcdf = f.variables ['y']
-        deccdf = f.variables ['z']        
+        deccdf = f.variables ['z']
 
     # Transpose lat/lon to lon/lat
     dec = np.transpose (deccdf.data)
     
     # Create an interpolator. This is a regular grid so we use a regular grid interpolator that
     # exploits the regularity to achieve the most efficient search
-    return RegularGridInterpolator ((loncdf.data, latcdf.data), dec)
+    return units, RegularGridInterpolator ((loncdf.data, latcdf.data), dec)
 
 def loadSharkPath():
     print ("loadSharkPath")        
@@ -226,6 +237,21 @@ def loadSharkPath():
     cleaned_df.head()
     return cleaned_df
 
+def main():
+    unitsBathysphere, interpBathysphere = loadBathysphere()
+    check (interpBathysphere, 'Bathysphere ({})' . format (unitsBathysphere))
+    
+    unitsCurrent, interpCurrentU, interpCurrentV = loadCurrent()
+    check (interpCurrentU, 'CurrentU ({})' . format (unitsCurrent))
+    check (interpCurrentV, 'CurrentV ({})' . format (unitsCurrent))
+    
+    unitsDeclination, interpDeclination = loadDeclination()
+    check (interpDeclination, 'Declination ({})' . format (unitsDeclination))
+    
+    df = loadSharkPath()
+    
+    appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV)
+
 def separatedPoints (lon, lat, u, v):
     # Google Map investigation of Greater Bank bathysphere data suggests the 2 points used
     # upstream and downstream (in terms of the current) should be about 100 miles from the
@@ -233,11 +259,6 @@ def separatedPoints (lon, lat, u, v):
     separationKilometers = 100.0 * (1.6 / 1.0)
     earthRadiusKilometers = 6378.16
 
-    # Normalize u and v so together they have unit magnitude
-    mag = math.sqrt (u * u + v * v)
-    u = u / mag # Longitude component
-    v = v / mag # Latitude component
-    
     # For small enough separationKilometers, we can ignore the distortion caused by the
     # longitude lines joining at the north pole, and just add longitude and latitude
     # deltas calculated as simply proportional to u and v
@@ -245,13 +266,5 @@ def separatedPoints (lon, lat, u, v):
     lonNew = lon + math.cos (u * angleSeparation)
     latNew = lat + math.sin (v * angleSeparation)
     return lonNew, latNew
-    
-interpBathysphere = loadBathysphere()
-check (interpBathysphere, 'Bathysphere')
-interpCurrentU, interpCurrentV = loadCurrent()
-check (interpCurrentU, 'CurrentU')
-check (interpCurrentV, 'CurrentV')
-interpDeclination = loadDeclination()
-check (interpDeclination, 'Declination')
-df = loadSharkPath()
-appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV)
+
+main()
