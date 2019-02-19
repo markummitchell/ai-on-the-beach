@@ -272,12 +272,15 @@ def loadSharkPath():
     # Cast to datetime values to datetime
     cleaned_df['loc_date'] = cleaned_df.loc_date.apply(lambda x: datetime.strptime(x, '%m/%d/%y %H:%M'))
 
+    # Save to csv for more detailed inspection
+    cleaned_df.to_csv ('outputs/cleaned_df_duplicates_included.csv')
+    
     # Remove successive entries that are so close in time that the longitude
     # and latitude coordinates are unchanged. This is experimental
     cleaned_df = cleaned_df.drop_duplicates (subset = ['shark_id', 'long', 'lat'])
 
     # Save to csv for more detailed inspection
-    cleaned_df.to_csv ('outputs/cleaned_df.csv')
+    cleaned_df.to_csv ('outputs/cleaned_df_duplicates_removed.csv')
 
     return cleaned_df
 
