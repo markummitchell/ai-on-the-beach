@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from google_drive_downloader import GoogleDriveDownloader as gdd
 import io
 import math
@@ -14,59 +14,121 @@ from scipy.io import netcdf
 import shutil
 import tempfile
 
-def appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV):   
+earthRadiusKilometers = 6378.16
+
+def appendDepthAndDepthChanges(df, interpBathysphere, interpCurrentU, interpCurrentV):
     # Create arrays with depth and downstream/upstream depth changes for each lon/lat coordinate
-    depths = np.zeros((df.shape))
-    depthChangeDownstream = np.zeros((df.shape))    
-    depthChangeUpstream = np.zeros((df.shape))
+    depths = np.zeros((df.shape [0]))
+    depthChangeDownstream = np.zeros((df.shape [0]))
+    depthChangeUpstream = np.zeros((df.shape [0]))
+    lonLast = {}  # Indexed by shark id
     indexTo = 0
-    for id, row in df.iterrows():
-        lon = df.at [id, 'long']
-        lat = df.at [id, 'lat']
+    for idRow, row in df.iterrows():
+        lon = row['long']
+        lat = row['lat']
 
         # Perform interpolations
-        depth = interpBathysphere ([lon, lat])
-        u = interpCurrentU ([lon, lat])
-        v = interpCurrentV ([lon, lat])
+        depth = interpBathysphere([lon, lat])[0]
+        u = interpCurrentU([lon, lat])[0]
+        v = interpCurrentV([lon, lat])[0]
 
         # Get downstream and upstream points
-        lonDownstream, latDownstream = separatedPoints (lon, lat, u, v)
-        lonUpstream, latUpstream = separatedPoints (lon, lat, -1.0 * u, -1.0 * v)
+        lonDownstream, latDownstream = separatedPointsFromSeparation(lon, lat, u, v)
+        lonUpstream, latUpstream = separatedPointsFromSeparation(lon, lat, -1.0 * u, -1.0 * v)
 
         # More interpolations at downstream and upstream points
-        depthDownstream = interpBathysphere ([lonDownstream, latDownstream])
-        depthUpstream = interpBathysphere ([lonUpstream, latUpstream])
-        
+        depthDownstream = interpBathysphere([lonDownstream, latDownstream])[0]
+        depthUpstream = interpBathysphere([lonUpstream, latUpstream])[0]
+
         # Save results
-        depths [indexTo] = depth
-        depthChangeDownstream [indexTo] = depthDownstream - depth
-        depthChangeUpstream [indexTo] = depth - depthUpstream
-        
+        depths[indexTo] = depth
+        depthChangeDownstream[indexTo] = depthDownstream - depth
+        depthChangeUpstream[indexTo] = depth - depthUpstream
+
         indexTo += 1
-        
+
     # Convert the arrays into dataframes
     dfDepth = pd.DataFrame({'depth': depths.tolist()})
     dfDepthChangeDownstream = pd.DataFrame({'depthChangeDownstream': depthChangeDownstream.tolist()})
-    dfDepthChangeUpstream = pd.DataFrame({'depthChangeUpstream': depthChangeUpstream.tolist()})    
+    dfDepthChangeUpstream = pd.DataFrame({'depthChangeUpstream': depthChangeUpstream.tolist()})
 
-    # https://stackoverflow.com/questions/20602947/append-column-to-pandas-dataframe
-    # explains why we have to sync the indexes of the two arrays since the df indexes
-    # skips some values due to earlier filtering
-    df.reset_index(drop=True)
-    dfDepth.reset_index(drop=True)
-    dfDepthChangeDownstream.reset_index(drop=True)
-    dfDepthChangeUpstream.reset_index(drop=True)        
-    
-    df = df.join (dfDepth)
-    df.reset_index(drop=True)
-    
-    df = df.join (dfDepthChangeDownstream)
-    df.reset_index(drop=True)
-    
-    df = df.join (dfDepthChangeUpstream)
-    df.reset_index(drop=True)
-    
+    df.reset_index(inplace=True)
+    dfDepth.reset_index(inplace=True)
+    dfDepthChangeDownstream.reset_index(inplace=True)
+    dfDepthChangeUpstream.reset_index(inplace=True)
+
+    df = df.join (dfDepth, how='right', lsuffix = '_left')
+    df = df.join (dfDepthChangeDownstream, how='right', lsuffix = '_left')
+    df = df.join (dfDepthChangeUpstream, how='right', lsuffix = '_left')
+
+    df.reset_index(drop=True, inplace=True) # Remove index column(s)
+
     return df
+
+def appendDirectionAndLocationQuantities (df, interpDeclination):
+    # Create arrays using points I-1 and I:
+    # 1) absolute bearing angle (degrees), 0=magnetic north and +90=eastward
+    # 2) time between successive locations (hours)
+    # 3) distance between successive locations (kilometers)
+    # The last two quantities may be useful to account for how readings just a short time apart
+    # (minutes) may be highly correlated, but readings far apart in time (months) will be lacking
+    # much important information so maybe the correlations are less reliable
+    bearing = np.zeros((df.shape [0]))
+    timeStep = np.array ([timedelta(0) for i in range (df.shape [0])])
+    distanceStep = np.zeros((df.shape [0]))
+    indexTo = 0
+    rowLast = {} # Indexed by shark id
+    for idRow, row in df.iterrows():
+        idShark = row ['shark_id']
+        lon = row ['long']
+        lat = row ['lat']
+        time = row ['loc_date']
+
+        # Perform calculations
+        if idShark in rowLast:
+            lonLast = rowLast [idShark] ['long']
+            latLast = rowLast [idShark] ['lat']
+            timeLast = rowLast [idShark] ['loc_date']
+
+            # This code assumes duplicate id/timestamp rows have been removed
+            bearing [indexTo] = bearingFromSeparatedPoints (interpDeclination, lonLast, latLast, lon, lat)
+            timeStep [indexTo] = time - timeLast
+            distanceStep [indexTo] = separationFromSeparatedPoints (lonLast, latLast, lon, lat)
+        else:
+            bearing [indexTo] = 0
+            timeStep [indexTo] = time - time
+            distanceStep [indexTo] = 0
+        indexTo += 1
+        rowLast [idShark] = row
+
+    # Convert the arrays into dataframes
+    dfBearing = pd.DataFrame({'bearing': bearing.tolist()})
+    dfTimeStep = pd.DataFrame({'timeStep': timeStep.tolist()})
+    dfDistanceStep = pd.DataFrame({'distanceStep': distanceStep.tolist()})
+
+    df.reset_index(inplace=True)
+    dfBearing.reset_index(inplace=True)
+    dfTimeStep.reset_index(inplace=True)
+    dfDistanceStep.reset_index(inplace=True)
+
+    df = df.join (dfBearing, how='right', lsuffix = '_left')
+    df = df.join (dfTimeStep, how='right', lsuffix = '_left')
+    df = df.join (dfDistanceStep, how='right', lsuffix = '_left')
+
+    df.reset_index(drop=True, inplace=True) # Remove index column(s)
+
+    return df
+
+def bearingFromSeparatedPoints (interpDeclination, lon0, lat0, lon1, lat1):
+    # Inverse of separatedPointsFromSeparation.
+    # For small enough separations, we can ignore the distortion caused by the
+    # longitude lines joining at the north pole, and just convert angular separation into distance
+    angleDeclination = interpDeclination ([lon0, lat0])
+    # Angle from north pole, ignoring magnetic declination. Note that angle measured from
+    # eastward direction would be atan2 (lat1 - lat0, lon1 - lon0)
+    angleTrueNorth = 180. * math.atan2 (lon1 - lon0, lat1 - lat0) / np.pi
+    angleMagneticNorth = angleTrueNorth - angleDeclination
+    return angleMagneticNorth
 
 def check (interp, title):
     lonmin = -80
@@ -184,12 +246,10 @@ def loadSharkPath():
     print ('Downloading {}... ' . format (googleFile), end='')    
     df = pd.read_csv(googleFile)
     print ('Done.')
-    
-    # Now that we have uploaded the Data we can see it as a Dataframe
-    df.head()
 
     # Next step is to clean the Data and drop the columns we don't need
     COLUMN_MAPPING = {
+        'Shark ID': 'shark_id',
         'Prg No.': 'prg_no',
         'Latitude': 'lat',
         'Longitude': 'long',
@@ -234,37 +294,63 @@ def loadSharkPath():
     # Cast to datetime values to datetime
     cleaned_df['loc_date'] = cleaned_df.loc_date.apply(lambda x: datetime.strptime(x, '%m/%d/%y %H:%M'))
 
-    cleaned_df.head()
+    # Remove successive entries that are so close in time that the longitude
+    # and latitude coordinates are unchanged. This is experimental
+    cleaned_df = cleaned_df.drop_duplicates (subset = ['shark_id', 'long', 'lat'])
+
+    # Save to csv for more detailed inspection
+    cleaned_df.to_csv ('outputs/cleaned_df.csv')
+
     return cleaned_df
 
 def main():
     unitsBathysphere, interpBathysphere = loadBathysphere()
-    check (interpBathysphere, 'Bathysphere ({})' . format (unitsBathysphere))
+    #check (interpBathysphere, 'Bathysphere ({})' . format (unitsBathysphere))
     
     unitsCurrent, interpCurrentU, interpCurrentV = loadCurrent()
-    check (interpCurrentU, 'CurrentU ({})' . format (unitsCurrent))
-    check (interpCurrentV, 'CurrentV ({})' . format (unitsCurrent))
+    #check (interpCurrentU, 'CurrentU ({})' . format (unitsCurrent))
+    #check (interpCurrentV, 'CurrentV ({})' . format (unitsCurrent))
     
     unitsDeclination, interpDeclination = loadDeclination()
-    check (interpDeclination, 'Declination ({})' . format (unitsDeclination))
+    #check (interpDeclination, 'Declination ({})' . format (unitsDeclination))
     
     df = loadSharkPath()
     
-    appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV)
+    df = appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV)
+    df = appendDirectionAndLocationQuantities (df, interpDeclination)
 
-def separatedPoints (lon, lat, u, v):
+    # Show. Omit print function in python notebook
+    print ('first few rows\n{}' . format (df.head(20)))
+    print ('\n\n\nlast few rows\n{}' . format (df.tail(20)))
+    df.to_csv ('outputs/complete_df.csv')
+    
+def separatedPointsFromSeparation (lon, lat, u, v):
+    # Inverse of separationFromSeparatedPoints.
     # Google Map investigation of Greater Bank bathysphere data suggests the 2 points used
-    # upstream and downstream (in terms of the current) should be about 100 miles from the
+    # upstream and downstream (in terms of the current) should be about 10 miles from the
     # center point
-    separationKilometers = 100.0 * (1.6 / 1.0)
-    earthRadiusKilometers = 6378.16
+    separationKilometers = 10.0 * (1.6 / 1.0)
 
+    # Make u and v into a unit vector (u,v) which will be multiplied by angleSeparation below
+    # to get a (lon,lat) separation vector with a specified great circle angle
+    uvmag = math.sqrt (u * u + v * v)
+    u = u / uvmag
+    v = v / uvmag
+    
     # For small enough separationKilometers, we can ignore the distortion caused by the
     # longitude lines joining at the north pole, and just add longitude and latitude
     # deltas calculated as simply proportional to u and v
     angleSeparation = separationKilometers / earthRadiusKilometers # Great circle angle in radians
-    lonNew = lon + math.cos (u * angleSeparation)
-    latNew = lat + math.sin (v * angleSeparation)
+    lonNew = lon + angleSeparation * u * 180. / np.pi
+    latNew = lat + angleSeparation * v * 180. / np.pi
     return lonNew, latNew
+
+def separationFromSeparatedPoints (lon0, lat0, lon1, lat1):
+    # Inverse of separatedPointsFromSeparation. Returns great circle angle between two vectors.
+    # For small enough separations, we can ignore the distortion caused by the
+    # longitude lines joining at the north pole, and just convert angular separation into distance
+    angleSep = math.sqrt ((lon1 - lon0) * (lon1 - lon0) + \
+                          (lat1 - lat0) * (lat1 - lat0))
+    return (angleSep * np.pi / 180.) * earthRadiusKilometers
 
 main()
