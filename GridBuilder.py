@@ -18,11 +18,14 @@ earthRadiusKilometers = 6378.16
 
 def appendDepthAndDepthChanges(df, interpBathysphere, interpCurrentU, interpCurrentV):
     # Create arrays with depth and downstream/upstream depth changes for each lon/lat coordinate
-    depths = np.zeros((df.shape [0]))
-    depthChangeDownstream = np.zeros((df.shape [0]))
-    depthChangeUpstream = np.zeros((df.shape [0]))
+    df['depth'] = pd.Series (0., index=df.index)
+    df['depthChangeDownstream'] = pd.Series (0., index=df.index)
+    df['depthChangeUpstream'] = pd.Series (0., index=df.index)
     lonLast = {}  # Indexed by shark id
     indexTo = 0
+    indexDepth = df.columns.get_loc('depth')
+    indexDepthChangeDownstream = df.columns.get_loc('depthChangeDownstream')
+    indexDepthChangeUpstream = df.columns.get_loc('depthChangeUpstream')
     for idRow, row in df.iterrows():
         lon = row['long']
         lat = row['lat']
@@ -41,27 +44,12 @@ def appendDepthAndDepthChanges(df, interpBathysphere, interpCurrentU, interpCurr
         depthUpstream = interpBathysphere([lonUpstream, latUpstream])[0]
 
         # Save results
-        depths[indexTo] = depth
-        depthChangeDownstream[indexTo] = depthDownstream - depth
-        depthChangeUpstream[indexTo] = depth - depthUpstream
+        idx = df.index[indexTo]
+        df.at [idx, 'depth'] = depth
+        df.at [idx, 'depthChangeDownstream'] = depthDownstream - depth
+        df.at [idx, 'depthChangeUpstream'] = depth - depthUpstream
 
         indexTo += 1
-
-    # Convert the arrays into dataframes
-    dfDepth = pd.DataFrame({'depth': depths.tolist()})
-    dfDepthChangeDownstream = pd.DataFrame({'depthChangeDownstream': depthChangeDownstream.tolist()})
-    dfDepthChangeUpstream = pd.DataFrame({'depthChangeUpstream': depthChangeUpstream.tolist()})
-
-    df.reset_index(inplace=True)
-    dfDepth.reset_index(inplace=True)
-    dfDepthChangeDownstream.reset_index(inplace=True)
-    dfDepthChangeUpstream.reset_index(inplace=True)
-
-    df = df.join (dfDepth, how='right', lsuffix = '_left')
-    df = df.join (dfDepthChangeDownstream, how='right', lsuffix = '_left')
-    df = df.join (dfDepthChangeUpstream, how='right', lsuffix = '_left')
-
-    df.reset_index(drop=True, inplace=True) # Remove index column(s)
 
     return df
 
@@ -73,10 +61,13 @@ def appendDirectionAndLocationQuantities (df, interpDeclination):
     # The last two quantities may be useful to account for how readings just a short time apart
     # (minutes) may be highly correlated, but readings far apart in time (months) will be lacking
     # much important information so maybe the correlations are less reliable
-    bearing = np.zeros((df.shape [0]))
-    timeStep = np.array ([timedelta(0) for i in range (df.shape [0])])
-    distanceStep = np.zeros((df.shape [0]))
+    df['bearing'] = pd.Series (0., index=df.index)
+    df['timeStep'] = pd.Series (timedelta(0), index=df.index)
+    df['distanceStep'] = pd.Series (0., index=df.index)
     indexTo = 0
+    indexBearing = df.columns.get_loc('bearing')
+    indexTimeStep = df.columns.get_loc('timeStep')
+    indexDistanceStep = df.columns.get_loc('distanceStep')
     rowLast = {} # Indexed by shark id
     for idRow, row in df.iterrows():
         idShark = row ['shark_id']
@@ -85,37 +76,24 @@ def appendDirectionAndLocationQuantities (df, interpDeclination):
         time = row ['loc_date']
 
         # Perform calculations
+        bearing = 0.
+        timeStep = time - time
+        distanceStep = 0.
         if idShark in rowLast:
             lonLast = rowLast [idShark] ['long']
             latLast = rowLast [idShark] ['lat']
             timeLast = rowLast [idShark] ['loc_date']
 
             # This code assumes duplicate id/timestamp rows have been removed
-            bearing [indexTo] = bearingFromSeparatedPoints (interpDeclination, lonLast, latLast, lon, lat)
-            timeStep [indexTo] = time - timeLast
-            distanceStep [indexTo] = separationFromSeparatedPoints (lonLast, latLast, lon, lat)
-        else:
-            bearing [indexTo] = 0
-            timeStep [indexTo] = time - time
-            distanceStep [indexTo] = 0
+            bearing = bearingFromSeparatedPoints (interpDeclination, lonLast, latLast, lon, lat)
+            timeStep = time - timeLast
+            distanceStep = separationFromSeparatedPoints (lonLast, latLast, lon, lat)
+        idx = df.index[indexTo]
+        df.at [idx, 'bearing'] = bearing
+        df.at [idx, 'timeStep'] = timeStep
+        df.at [idx, 'distanceStep'] = distanceStep
         indexTo += 1
         rowLast [idShark] = row
-
-    # Convert the arrays into dataframes
-    dfBearing = pd.DataFrame({'bearing': bearing.tolist()})
-    dfTimeStep = pd.DataFrame({'timeStep': timeStep.tolist()})
-    dfDistanceStep = pd.DataFrame({'distanceStep': distanceStep.tolist()})
-
-    df.reset_index(inplace=True)
-    dfBearing.reset_index(inplace=True)
-    dfTimeStep.reset_index(inplace=True)
-    dfDistanceStep.reset_index(inplace=True)
-
-    df = df.join (dfBearing, how='right', lsuffix = '_left')
-    df = df.join (dfTimeStep, how='right', lsuffix = '_left')
-    df = df.join (dfDistanceStep, how='right', lsuffix = '_left')
-
-    df.reset_index(drop=True, inplace=True) # Remove index column(s)
 
     return df
 
@@ -319,10 +297,9 @@ def main():
     df = appendDepthAndDepthChanges (df, interpBathysphere, interpCurrentU, interpCurrentV)
     df = appendDirectionAndLocationQuantities (df, interpDeclination)
 
-    # Show. Omit print function in python notebook
-    print ('first few rows\n{}' . format (df.head(20)))
-    print ('\n\n\nlast few rows\n{}' . format (df.tail(20)))
-    df.to_csv ('outputs/complete_df.csv')
+    outfile = 'outputs/complete_df.csv'
+    print ('Writing csv file {}' . format (outfile))
+    df.to_csv (outfile)
     
 def separatedPointsFromSeparation (lon, lat, u, v):
     # Inverse of separationFromSeparatedPoints.
