@@ -28,12 +28,8 @@ COL_DEPTH_CHANGE_UPSTREAM = 'depthChangeUpstream'
 COL_DISTANCESTEP = 'distanceStep'
 COL_LATITUDE = 'latitude'
 COL_LONGITUDE = 'longitude'
-COL_SHARK_ID = 'shark_id'
+COL_SHARK_ID = 'id' # May also be shark_id
 COL_TIMESTEP = 'timeStep'
-
-
-# In[95]:
-
 
 def appendDepthAndDepthChanges(df, interpBathysphere, interpCurrentU, interpCurrentV):
     # Create arrays with depth and downstream/upstream depth changes for each lon/lat coordinate
@@ -42,23 +38,35 @@ def appendDepthAndDepthChanges(df, interpBathysphere, interpCurrentU, interpCurr
     df[COL_DEPTH_CHANGE_UPSTREAM] = pd.Series (0., index=df.index)
     lonLast = {}  # Indexed by shark id
     indexTo = 0
+    latMin = -39.9999
+    latMax = 49.9999
     for idRow, row in df.iterrows():
-        lon = row[COL_LONGITUDE]
-        lat = row[COL_LATITUDE]
-        
+        lon = float (row[COL_LONGITUDE])
+        lat = float (row[COL_LATITUDE])
+        # Keep in bounds
+        lat = min (max (lat, latMin), latMax)
         # Perform interpolations
         depth = interpBathysphere([lat, lon])[0]
         u = interpCurrentU([lon, lat])[0]
         v = interpCurrentV([lon, lat])[0]
-        
-        # Get downstream and upstream points
-        lonDownstream, latDownstream = separatedPointsFromSeparation(lon, lat, u, v)
-        lonUpstream, latUpstream = separatedPointsFromSeparation(lon, lat, -1.0 * u, -1.0 * v)
-        
-        # More interpolations at downstream and upstream points
-        depthDownstream = interpBathysphere([latDownstream, lonDownstream])[0]
-        depthUpstream = interpBathysphere([latUpstream, lonUpstream])[0]
-        
+
+        if math.isnan (u) or math.isnan (v):
+            # Out of the defined current area
+            depthDownstream = depth
+            depthUpstream = depth
+        else:
+            # Get downstream and upstream points
+            lonDownstream, latDownstream = separatedPointsFromSeparation(lon, lat, u, v)
+            lonUpstream, latUpstream = separatedPointsFromSeparation(lon, lat, -1.0 * u, -1.0 * v)
+            # Keep in bounds
+            lonDownstream = lonDownstream % 180.
+            lonUpstream = latUpstream % 180.
+            latDownstream = min (max (latDownstream, latMin), latMax)
+            latUpstream = min (max (latUpstream, latMin), latMax)            
+            # More interpolations at downstream and upstream points
+            depthDownstream = interpBathysphere([latDownstream, lonDownstream])[0]
+            depthUpstream = interpBathysphere([latUpstream, lonUpstream])[0]
+            
         # Save results
         idx = df.index[indexTo]
         df.at [idx, COL_DEPTH] = depth
@@ -85,10 +93,11 @@ def appendDirectionAndLocationQuantities (df, interpDeclination):
     indexTimeStep = df.columns.get_loc(COL_TIMESTEP)
     indexDistanceStep = df.columns.get_loc(COL_DISTANCESTEP)
     rowLast = {} # Indexed by shark id
+    print ('columns.keys={}' . format (df.columns.values))
     for idRow, row in df.iterrows():
-        idShark = row [COL_SHARK_ID]
-        lon = row [COL_LONGITUDE]
-        lat = row [COL_LATITUDE]
+        idShark = int (row [COL_SHARK_ID])
+        lon = float (row [COL_LONGITUDE])
+        lat = float (row [COL_LATITUDE])
         time = row [COL_DATE]
         
         # Perform calculations
@@ -215,7 +224,7 @@ def loadBathysphereWorld ():
             # The actual aggregation
             lons = np.concatenate ((lons, loncdf.data), axis=0)
             eles = np.concatenate ((eles, elecdf.data), axis=1)
-        print ('aggregate=({} {} {})' . format (lons.shape, lats.shape, eles.shape))
+        #print ('aggregate=({} {} {})' . format (lons.shape, lats.shape, eles.shape))
     #
     # Reduce from 5401x21604 which causes indexing errors
     lonIndexes = np.arange (0, len (lons), 4)
@@ -226,7 +235,6 @@ def loadBathysphereWorld ():
     eles = np.take (eles, lonIndexes, axis=1)
     #
     # Create an interpolator
-    print ('final aggregate=({} {} {})' . format (lons.shape, lats.shape, eles.shape))
     #np.savetxt('lons.csv', lons)
     #np.savetxt('lats.csv', lats)
     return units, RegularGridInterpolator ((lats, lons), eles)
@@ -385,7 +393,7 @@ def loadSharkPathOcsearch():
 
 def main():
     #unitsBathysphere, interpBathysphere = loadBathysphereAtlantic()
-    unitsBathysphere, interpBathysphere = loadBathysphereWorld()    
+    unitsBathysphere, interpBathysphere = loadBathysphereWorld()
     #check (interpBathysphere, 'Bathysphere ({})' . format (unitsBathysphere))
     unitsCurrent, interpCurrentU, interpCurrentV = loadCurrent()
     #check (interpCurrentU, 'CurrentU ({})' . format (unitsCurrent))
