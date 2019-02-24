@@ -93,21 +93,22 @@ def appendDirectionAndLocationQuantities (df, interpDeclination):
     indexTimeStep = df.columns.get_loc(COL_TIMESTEP)
     indexDistanceStep = df.columns.get_loc(COL_DISTANCESTEP)
     rowLast = {} # Indexed by shark id
+    DATE_FORMAT = '%d %B %Y' # '7 March 2019' would be '%d %B %Y'
     print ('columns.keys={}' . format (df.columns.values))
     for idRow, row in df.iterrows():
         idShark = int (row [COL_SHARK_ID])
         lon = float (row [COL_LONGITUDE])
         lat = float (row [COL_LATITUDE])
-        time = row [COL_DATE]
-        
+        time = datetime.strptime (row [COL_DATE], DATE_FORMAT)
+                              
         # Perform calculations
         bearing = 0.
         timeStep = time - time
         distanceStep = 0.
         if idShark in rowLast:
-            lonLast = rowLast [idShark] [COL_LONGITUDE]
-            latLast = rowLast [idShark] [COL_LATITUDE]
-            timeLast = rowLast [idShark] [COL_DATE]
+            lonLast = float (rowLast [idShark] [COL_LONGITUDE])
+            latLast = float (rowLast [idShark] [COL_LATITUDE])
+            timeLast = datetime.strptime (rowLast [idShark] [COL_DATE], DATE_FORMAT)
             
             # This code assumes duplicate id/timestamp rows have been removed
             bearing = bearingFromSeparatedPoints (interpDeclination, lonLast, latLast, lon, lat)
@@ -126,7 +127,10 @@ def bearingFromSeparatedPoints (interpDeclination, lon0, lat0, lon1, lat1):
     # Inverse of separatedPointsFromSeparation.
     # For small enough separations, we can ignore the distortion caused by the
     # longitude lines joining at the north pole, and just convert angular separation into distance
-    angleDeclination = interpDeclination ([lon0, lat0])
+    
+    # HACK! angleDeclination = interpDeclination ([lon0, lat0])
+    angleDeclination = 0.
+    
     # Angle from north pole, ignoring magnetic declination. Note that angle measured from
     # eastward direction would be atan2 (lat1 - lat0, lon1 - lon0)
     angleTrueNorth = 180. * math.atan2 (lon1 - lon0, lat1 - lat0) / np.pi
