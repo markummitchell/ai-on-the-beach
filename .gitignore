@@ -4,3 +4,5 @@ in.nc
 shark*.svg
 shark_path.mp4
 outputs
+lats.csv
+lons.csv

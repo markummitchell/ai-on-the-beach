@@ -126,7 +126,7 @@ def check (interp, title):
 def loadBathysphere ():
     print ("loadBathysphere")
 
-    # https://www.gebco.net/data_and_products/gridded_bathymetry_data/
+    # etopo1_bedrock_-80_-35_10_45.nc
     units = 'meters'    
     googleIdBathysphere = '10VqbV2oNUVcvS6lLP3FekVlFM4LUJj5o' # Extracted from share url
     tmpBathysphere = tempfile.NamedTemporaryFile (suffix = '.nc', \
